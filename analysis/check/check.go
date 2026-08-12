@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/types"
 	"slices"
 	"strings"
 	"time"
@@ -234,6 +235,15 @@ func checkSummary(
 		return SoundnessResult{Soundness: Error},
 			fmt.Errorf("cannot check soundness of %s: it is a closure with free variables, which "+
 				"the checkable summary format cannot express for a top-level target", f)
+	}
+	// The checkable summary format has no syntax for a function-typed input or output, so reject
+	// f if it is higher-order.
+	if len(callStack) == 1 {
+		if path, ok := higherOrderInputOrOutput(f); ok {
+			return SoundnessResult{Soundness: Error},
+				fmt.Errorf("cannot check soundness of %s: it is higher-order (%s resolves to a "+
+					"function type), which the checkable summary format cannot express", f, path)
+		}
 	}
 
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
@@ -464,6 +474,64 @@ func checkSummary(
 	soundnessResultBase.Time = time.Since(start)
 	soundnessResultBase.CalleeResults = calleeResults
 	return soundnessResultBase, nil
+}
+
+// isHigherOrderType reports whether t or an access path into it resolves to a function type. It
+// descends through pointers, struct fields, array/slice elements, and map keys/values, since a
+// summary input/output can alias into any of them; it stops at interfaces, whose concrete type is
+// not statically known. Named types can be recursive (e.g. a linked list), so visited types are
+// tracked to terminate on a cycle instead of resolving one as higher-order.
+func isHigherOrderType(t types.Type) bool {
+	return isHigherOrderTypeVisiting(t, make(map[types.Type]bool))
+}
+
+func isHigherOrderTypeVisiting(t types.Type, seen map[types.Type]bool) bool {
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	switch t := t.(type) {
+	case *types.Signature:
+		return true
+	case *types.Pointer:
+		return isHigherOrderTypeVisiting(t.Elem(), seen)
+	case *types.Named:
+		return isHigherOrderTypeVisiting(t.Underlying(), seen)
+	case *types.Alias:
+		return isHigherOrderTypeVisiting(t.Underlying(), seen)
+	case *types.Struct:
+		for i, n := 0, t.NumFields(); i < n; i++ {
+			if isHigherOrderTypeVisiting(t.Field(i).Type(), seen) {
+				return true
+			}
+		}
+	case *types.Array:
+		return isHigherOrderTypeVisiting(t.Elem(), seen)
+	case *types.Slice:
+		return isHigherOrderTypeVisiting(t.Elem(), seen)
+	case *types.Map:
+		return isHigherOrderTypeVisiting(t.Key(), seen) || isHigherOrderTypeVisiting(t.Elem(), seen)
+	case *types.Chan:
+		return isHigherOrderTypeVisiting(t.Elem(), seen)
+	}
+	return false
+}
+
+// higherOrderInputOrOutput reports the name of the first parameter, receiver, or return value of f
+// whose type is higher-order (see isHigherOrderType), if any.
+func higherOrderInputOrOutput(f *ssa.Function) (string, bool) {
+	for _, p := range f.Params {
+		if isHigherOrderType(p.Type()) {
+			return p.Name(), true
+		}
+	}
+	results := f.Signature.Results()
+	for i, n := 0, results.Len(); i < n; i++ {
+		if isHigherOrderType(results.At(i).Type()) {
+			return fmt.Sprintf("return value %d", i), true
+		}
+	}
+	return "", false
 }
 
 func checkCalleeSummaries(

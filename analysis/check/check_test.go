@@ -43,6 +43,10 @@ var testfsys embed.FS
 // basicPkg is the import path of the basic testdata package.
 const basicPkg = "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
 
+// invalidPkg is the import path of the invalid testdata package, which holds fixtures whose
+// top-level checkSummary call is expected to be rejected outright.
+const invalidPkg = "github.com/awslabs/ar-go-tools/analysis/check/testdata/invalid"
+
 func TestCheckSummary_Basic(t *testing.T) {
 	dir := filepath.Join("./testdata", "basic")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
@@ -1498,6 +1502,44 @@ func TestCheckSummary_ClosureRejected(t *testing.T) {
 	_, _, err = check.CheckSummary(context.Background(), state, summary, specs, true)
 	if err == nil {
 		t.Fatalf("expected an error checking a closure with free variables, got nil")
+	}
+}
+
+// TestCheckSummary_HigherOrderRejected checks that checkSummary rejects a top-level target that
+// is higher-order: it has a parameter, receiver, or return value whose type resolves to a
+// function, directly or through a struct field, since the checkable summary format has no syntax
+// for function-typed inputs/outputs.
+func TestCheckSummary_HigherOrderRejected(t *testing.T) {
+	dir := filepath.Join("./testdata", "invalid")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	ptrState, err := ptr.NewState(lp).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	state := newCheckState(t, ptrState)
+
+	specs := []dataflow.ScanningSpec{
+		{
+			IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+				return dataflow.IsNodeOfInterest(state.State, node)
+			},
+		},
+	}
+
+	for _, name := range []string{
+		"higherOrderDirect", "higherOrderReturn", "higherOrderField", "higherOrderMap",
+	} {
+		t.Run(name, func(t *testing.T) {
+			summary := summaries.NewFunctionFlowSummary(invalidPkg, name, summaries.DetailedSummary{})
+			_, _, err := check.CheckSummary(context.Background(), state, summary, specs, false)
+			if err == nil {
+				t.Fatalf("expected an error checking higher-order function %s, got nil", name)
+			}
+		})
 	}
 }
 

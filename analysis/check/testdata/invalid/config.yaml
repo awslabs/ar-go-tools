@@ -1,0 +1,4 @@
+options:
+  log-level: 3
+  silence-warn: true
+  reports-dir: .
