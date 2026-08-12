@@ -108,6 +108,11 @@ func inferCalleeSummaries(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build flow graph: %w", err)
 	}
+	if len(fg.boundLabelHits) > 0 {
+		s.Logger.Warnf("taint flow graph for %s dropped flow at a non-local bound label", g.Parent)
+		unsoundness.DataflowFeatures.NonLocalBoundLabelUsages = append(
+			unsoundness.DataflowFeatures.NonLocalBoundLabelUsages, fg.boundLabelHits...)
+	}
 	graphEdges := fg.allEdges()
 	if len(graphEdges) == 0 {
 		return nil, nil, fmt.Errorf("no reachable flows from inputs")

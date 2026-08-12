@@ -467,23 +467,24 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 // Guarantees that all label values in the slice of pointer labels returned are non-nil.
 func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
 	var maps []*pointer.Label
-	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ok {
+	aState := state.parentAnalyzerState
+	if ptr, ok := aState.PointerAnalysis.Queries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {
 			if label.Value() == nil {
 				continue
 			}
-			_, isBound := state.parentAnalyzerState.BoundingInfo[label.Value()]
+			_, isBound := aState.BoundingInfo[label.Value()]
 			if isBound {
 				maps = append(maps, label)
 			}
 		}
 	}
-	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[value]; ok {
+	if ptr, ok := aState.PointerAnalysis.IndirectQueries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {
 			if label.Value() == nil {
 				continue
 			}
-			_, isBound := state.parentAnalyzerState.BoundingInfo[label.Value()]
+			_, isBound := aState.BoundingInfo[label.Value()]
 			if isBound {
 				maps = append(maps, label)
 			}

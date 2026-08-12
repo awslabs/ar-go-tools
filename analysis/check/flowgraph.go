@@ -17,6 +17,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"go/token"
 	"slices"
 	"strconv"
 	"strings"
@@ -170,6 +171,10 @@ type flowGraph struct {
 	// derived from a signature position because it is inherited from the caller; see calleeInputNames
 	// in accesspaths.go. Distinct from the bound the callee is *checked* at, which is calleeInputBounds.
 	inputNames map[dataflow.GraphNode]int
+	// boundLabelHits records, deduplicated, the positions where a tainted flow reached a
+	// BoundLabelNode and was dropped (see expandVertex), so the caller can report it as a source
+	// of dataflow unsoundness.
+	boundLabelHits []token.Position
 }
 
 // newFlowGraph returns an empty flowGraph.
@@ -380,20 +385,15 @@ func expandVertex(s *State, fg *flowGraph, v vertex) ([]gedge, error) {
 		return edges, nil
 
 	case *dataflow.BoundLabelNode:
-		// TODO Handle bound labels. Returning no edges here is unsound, not merely imprecise: a
-		// bound label is a location captured by a closure, so dropping it makes flows through that
-		// capture invisible to the graph, and a must-not-flow is proven by the *absence* of a path.
-		// Every must-not-flow routed through a bound label therefore comes back proven, silently.
-		//
-		// transitive_closure.go's BoundLabelNode case is the reference: a bound label flows to the
-		// body of the closure that captures it, via DestClosure/DestInfo().MakeClosure, guarding on
-		// whether the creating function is reachable.
-		//
-		// Until then this should at least be *visible*. UnsoundCheckFeatures.NonLocalBoundLabelUsages
-		// exists for exactly that, and is already reported and compared by tests -- but nothing ever
-		// populates it, so a function using a bound label can currently come back Sound with no
-		// indication anywhere. Populating it is the smaller first step and does not require deciding
-		// the dataflow question.
+		// NOTE Unlike ordinary (local) closure captures, which are BoundVarNodes handled above, a
+		// non-local capture is represented as a BoundLabelNode, and we explicitly flag its use as a
+		// potential source of unsoundness. Therefore, we can drop all flows to a bound label node,
+		// even though this is unsound. Bound labels also usually cause a state space explosion in
+		// the taint analysis.
+		pos := n.Position(s.State)
+		if pos != (token.Position{}) && !slices.Contains(fg.boundLabelHits, pos) {
+			fg.boundLabelHits = append(fg.boundLabelHits, pos)
+		}
 		return nil, nil
 
 	case *dataflow.IfNode:

@@ -140,12 +140,6 @@ func (r SoundnessResult) PrettyString() string {
 					s.WriteString(fmt.Sprintf("      - %s\n", pos))
 				}
 			}
-			if len(r.Unsoundness.CheckFeatures.NonLocalBoundLabelUsages) > 0 {
-				s.WriteString("    Non-local bound labels is used, which are not supported\n")
-				for _, pos := range r.Unsoundness.CheckFeatures.NonLocalBoundLabelUsages {
-					s.WriteString(fmt.Sprintf("      - %s\n", pos))
-				}
-			}
 		}
 		if !r.Unsoundness.DataflowFeatures.isSound() {
 			s.WriteString(
@@ -162,6 +156,12 @@ func (r SoundnessResult) PrettyString() string {
 			if len(r.Unsoundness.DataflowFeatures.GoUsages) > 0 {
 				s.WriteString("    Go statements are used, which may cause unsoundness\n")
 				for _, pos := range r.Unsoundness.DataflowFeatures.GoUsages {
+					s.WriteString(fmt.Sprintf("      - %s\n", pos))
+				}
+			}
+			if len(r.Unsoundness.DataflowFeatures.NonLocalBoundLabelUsages) > 0 {
+				s.WriteString("    Non-local bound labels are used, which the taint analysis does not follow\n")
+				for _, pos := range r.Unsoundness.DataflowFeatures.NonLocalBoundLabelUsages {
 					s.WriteString(fmt.Sprintf("      - %s\n", pos))
 				}
 			}
@@ -211,6 +211,12 @@ const (
 	Error Soundness = "error"
 )
 
+// provenSound reports whether every must-not-flow was proven: true for Sound and Soundy, false
+// for Unsound and Error.
+func (s Soundness) provenSound() bool {
+	return s == Sound || s == Soundy
+}
+
 func (u Unsoundness) soundness() Soundness {
 	if u.BadForm != nil {
 		return Error
@@ -249,17 +255,6 @@ type UnsoundCheckFeatures struct {
 	// The pointer analysis, which the immutability analysis depends on, is unsafe in the presence
 	// of reflection.
 	ReflectUsages []token.Position `json:"ReflectUsages,omitempty"`
-	// NonLocalBoundLabelUsages records the positions of bound labels created outside their
-	// corresponding MakeClosure instructions.
-	// We do not support summary nodes for closure-specific inputs/outputs other than bound and free
-	// variables.
-	//
-	// TODO Nothing populates this field. It is declared, documented, printed by the reporter and
-	// compared by the test harness, but never assigned, so it always reads empty and isSound below
-	// always treats bound labels as fine. Combined with expandVertex dropping BoundLabelNode edges
-	// entirely, a function using a bound label comes back Sound with no indication. See the TODO on
-	// that case in flowgraph.go.
-	NonLocalBoundLabelUsages []token.Position `json:"NonLocalBoundLabelUsages,omitempty"`
 	// EntryPointUsages records the positions of entry points in the code that would be summarized by the dataflow
 	// summary. This means  a dataflow analysis would potentially miss some entry points.
 	EntryPointUsages []token.Position `json:"EntryPointUsages,omitempty"`
@@ -270,7 +265,7 @@ type UnsoundCheckFeatures struct {
 
 func (u UnsoundCheckFeatures) isSound() bool {
 	return len(u.UnsafeUsages) == 0 && len(u.GlobalUsages) == 0 && len(u.ReflectUsages) == 0 &&
-		len(u.NonLocalBoundLabelUsages) == 0 && len(u.EntryPointUsages) == 0 && !u.TimedOut
+		len(u.EntryPointUsages) == 0 && !u.TimedOut
 }
 
 // UnsoundDataflowFeatures are the specific Go features that the function may use that would make
@@ -282,6 +277,10 @@ type UnsoundDataflowFeatures struct {
 	RecoverUsages      []token.Position
 	GoUsages           []token.Position
 	HasUnboundedDefers bool
+	// NonLocalBoundLabelUsages records the positions of stores through a pointer captured by a
+	// closure created outside the function, since the taint analysis drops flow into a non-local
+	// bound label to avoid following it outside the calling context being checked.
+	NonLocalBoundLabelUsages []token.Position
 	// TimedOut is true if the intra-procedural analysis of the function or one of its
 	// transitively reachable callees did not complete before the configured timeout
 	// (dataflow-problems.intra-timeout-ms). When true, the computed summary may be incomplete.
@@ -295,7 +294,7 @@ type UnsoundDataflowFeatures struct {
 
 func (u UnsoundDataflowFeatures) isSound() bool {
 	return len(u.RecoverUsages) == 0 && len(u.GoUsages) == 0 && !u.HasUnboundedDefers && !u.TimedOut &&
-		len(u.IntraTaintErrors) == 0
+		len(u.IntraTaintErrors) == 0 && len(u.NonLocalBoundLabelUsages) == 0
 }
 
 // Flow represents a data flow between two summary nodes.
@@ -355,11 +354,12 @@ type rawUnsoundness struct {
 // IntraTaintErrors ([]error, which has no exported fields to marshal) with its string
 // representation via newRawUnsoundDataflowFeatures.
 type rawUnsoundDataflowFeatures struct {
-	RecoverUsages      []token.Position `json:"RecoverUsages,omitempty"`
-	GoUsages           []token.Position `json:"GoUsages,omitempty"`
-	HasUnboundedDefers bool             `json:"HasUnboundedDefers,omitempty"`
-	TimedOut           bool             `json:"TimedOut,omitempty"`
-	IntraTaintErrors   []string         `json:"IntraTaintErrors,omitempty"`
+	RecoverUsages            []token.Position `json:"RecoverUsages,omitempty"`
+	GoUsages                 []token.Position `json:"GoUsages,omitempty"`
+	HasUnboundedDefers       bool             `json:"HasUnboundedDefers,omitempty"`
+	NonLocalBoundLabelUsages []token.Position `json:"NonLocalBoundLabelUsages,omitempty"`
+	TimedOut                 bool             `json:"TimedOut,omitempty"`
+	IntraTaintErrors         []string         `json:"IntraTaintErrors,omitempty"`
 }
 
 func newRawUnsoundDataflowFeatures(f UnsoundDataflowFeatures) *rawUnsoundDataflowFeatures {
@@ -367,11 +367,12 @@ func newRawUnsoundDataflowFeatures(f UnsoundDataflowFeatures) *rawUnsoundDataflo
 		return nil
 	}
 	return &rawUnsoundDataflowFeatures{
-		RecoverUsages:      f.RecoverUsages,
-		GoUsages:           f.GoUsages,
-		HasUnboundedDefers: f.HasUnboundedDefers,
-		TimedOut:           f.TimedOut,
-		IntraTaintErrors:   funcutil.Map(f.IntraTaintErrors, error.Error),
+		RecoverUsages:            f.RecoverUsages,
+		GoUsages:                 f.GoUsages,
+		HasUnboundedDefers:       f.HasUnboundedDefers,
+		NonLocalBoundLabelUsages: f.NonLocalBoundLabelUsages,
+		TimedOut:                 f.TimedOut,
+		IntraTaintErrors:         funcutil.Map(f.IntraTaintErrors, error.Error),
 	}
 }
 

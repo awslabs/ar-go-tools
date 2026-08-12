@@ -751,9 +751,12 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Sound,
+				Soundness: check.Soundy,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
+					DataflowFeatures: check.UnsoundDataflowFeatures{
+						NonLocalBoundLabelUsages: []token.Position{{}},
+					},
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
@@ -818,16 +821,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Unsound,
-				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "x", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "y", Index: 1},
-						},
-					},
-				},
-				Method: check.Recursive,
+				Soundness: check.Sound,
+				Method:    check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -843,17 +838,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							Soundness: check.Unsound,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									// TODO Read analysis false-positive
-									{
-										From: summaries.FreeVarSNode{Name: "x"},
-										To:   summaries.FreeVarSNode{Name: "y"},
-									},
-								},
+								UnprovenMustNotFlows: nil,
 							},
-							Method:        check.Read,
+							Method:        check.Immutability,
 							CalleeResults: nil,
 						},
 					},
@@ -921,7 +910,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				// NOTE Summary is unsound because closure has a non-local bound label
 				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
@@ -1468,18 +1456,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		if tc.name == "closureShared" {
-			// TODO Enable this test once we can encode this case into the test expectation.
-			// NOTE t.Skip() on the parent t would halt this whole loop, silently skipping every
-			// subsequent test case in tests[]; continue only skips this one case.
-			continue
-		}
 		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, tc.want.Soundness)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
 	}
 }
 
-// TestCheckSummary_ClosureRejected checks that checkSummary refuses to check a summary for a
 // TestCheckSummary_ClosureRejected checks that checkSummary rejects a top-level target that is a
 // closure with free variables, since the checkable summary format has no syntax for them.
 func TestCheckSummary_ClosureRejected(t *testing.T) {
@@ -3835,11 +3816,22 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	if len(wantCF.GlobalUsages) != len(gotCF.GlobalUsages) ||
 		len(wantCF.UnsafeUsages) != len(gotCF.UnsafeUsages) ||
 		len(wantCF.ReflectUsages) != len(gotCF.ReflectUsages) ||
-		len(wantCF.NonLocalBoundLabelUsages) != len(gotCF.NonLocalBoundLabelUsages) ||
 		len(wantCF.EntryPointUsages) != len(gotCF.EntryPointUsages) ||
 		wantCF.TimedOut != gotCF.TimedOut {
 		t.Errorf(
 			"check features mismatch for function %s: want %+v, got %+v", want.Name, wantCF, gotCF)
+		return
+	}
+
+	wantDF, gotDF := want.Unsoundness.DataflowFeatures, got.Unsoundness.DataflowFeatures
+	if len(wantDF.RecoverUsages) != len(gotDF.RecoverUsages) ||
+		len(wantDF.GoUsages) != len(gotDF.GoUsages) ||
+		wantDF.HasUnboundedDefers != gotDF.HasUnboundedDefers ||
+		len(wantDF.NonLocalBoundLabelUsages) != len(gotDF.NonLocalBoundLabelUsages) ||
+		wantDF.TimedOut != gotDF.TimedOut ||
+		len(wantDF.IntraTaintErrors) != len(gotDF.IntraTaintErrors) {
+		t.Errorf(
+			"dataflow features mismatch for function %s: want %+v, got %+v", want.Name, wantDF, gotDF)
 		return
 	}
 

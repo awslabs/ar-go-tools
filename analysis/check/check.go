@@ -407,6 +407,9 @@ func checkSummary(
 	// don't know which variant, if any, matches the callee's real behavior, we conservatively
 	// assume any of their unproven flows could be real).
 	calleesSound := true
+	// anyTrustedCalleeSoundy is true if some callee was only trusted via a Soundy variant, in
+	// which case f's own Soundness is widened from Sound to Soundy below.
+	anyTrustedCalleeSoundy := false
 	unsoundCalleeFlows := map[*ssa.Function][]Flow{}
 	for _, crs := range calleeResults {
 		if len(crs) == 0 {
@@ -415,8 +418,11 @@ func checkSummary(
 		// Only one inferred callee summary needs to be sound.
 		calleeSound := false
 		for _, cr := range crs {
-			if cr.Soundness == Sound {
+			if cr.Soundness.provenSound() {
 				calleeSound = true
+				if cr.Soundness == Soundy {
+					anyTrustedCalleeSoundy = true
+				}
 				break
 			}
 		}
@@ -447,7 +453,12 @@ func checkSummary(
 	// call also covers calleesSound == true (list is nil) and calleesSound == false with every
 	// flow pruned (list is empty): both rely on CheckFeatures/DataflowFeatures to decide between
 	// Sound and Soundy instead of hardcoding Sound.
-	soundnessResultBase.Soundness = unsoundness.soundness()
+	finalSoundness := unsoundness.soundness()
+	// Widen Sound to Soundy if a trusted callee was itself only Soundy; never touch Unsound/Error.
+	if anyTrustedCalleeSoundy && finalSoundness == Sound {
+		finalSoundness = Soundy
+	}
+	soundnessResultBase.Soundness = finalSoundness
 	soundnessResultBase.Unsoundness = unsoundness
 	soundnessResultBase.Method = Recursive
 	soundnessResultBase.Time = time.Since(start)
@@ -534,7 +545,7 @@ func checkCalleeSummaries(
 
 			s.Logger.Tracef("callee check result: %+v", calleeRes)
 			// Only one of the potential callee summaries needs to be sound.
-			if calleeRes.Soundness == Sound {
+			if calleeRes.Soundness.provenSound() {
 				if len(calleeRes.Unsoundness.UnprovenMustNotFlows) > 0 {
 					panic(fmt.Errorf(
 						"want no unproven must-not-flows in callee %s summary, got: %v",
