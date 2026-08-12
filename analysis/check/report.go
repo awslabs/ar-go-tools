@@ -240,15 +240,15 @@ func (u Unsoundness) isSound() bool {
 type UnsoundCheckFeatures struct {
 	// GlobalUsages records the positions where a global is used (read/modified).
 	// The analysis does not handle globals yet.
-	GlobalUsages []token.Position
+	GlobalUsages []token.Position `json:"GlobalUsages,omitempty"`
 	// UnsafeUsages records the positions where `unsafe` is used.
 	// If any reachable instruction from the function uses unsafe, then that allows arbitrary memory
 	// corruption and we can no longer provide any guarantees.
-	UnsafeUsages []token.Position
+	UnsafeUsages []token.Position `json:"UnsafeUsages,omitempty"`
 	// ReflectUsages records the positions where `reflect` is used.
 	// The pointer analysis, which the immutability analysis depends on, is unsafe in the presence
 	// of reflection.
-	ReflectUsages []token.Position
+	ReflectUsages []token.Position `json:"ReflectUsages,omitempty"`
 	// NonLocalBoundLabelUsages records the positions of bound labels created outside their
 	// corresponding MakeClosure instructions.
 	// We do not support summary nodes for closure-specific inputs/outputs other than bound and free
@@ -259,13 +259,13 @@ type UnsoundCheckFeatures struct {
 	// always treats bound labels as fine. Combined with expandVertex dropping BoundLabelNode edges
 	// entirely, a function using a bound label comes back Sound with no indication. See the TODO on
 	// that case in flowgraph.go.
-	NonLocalBoundLabelUsages []token.Position
+	NonLocalBoundLabelUsages []token.Position `json:"NonLocalBoundLabelUsages,omitempty"`
 	// EntryPointUsages records the positions of entry points in the code that would be summarized by the dataflow
 	// summary. This means  a dataflow analysis would potentially miss some entry points.
-	EntryPointUsages []token.Position
+	EntryPointUsages []token.Position `json:"EntryPointUsages,omitempty"`
 	// TimedOut is true if the scan above did not complete before its internal timeout, so the
 	// fields above may be incomplete.
-	TimedOut bool
+	TimedOut bool `json:"TimedOut,omitempty"`
 }
 
 func (u UnsoundCheckFeatures) isSound() bool {
@@ -333,37 +333,40 @@ type rawSoundnessResult struct {
 	Func          string
 	SummaryName   string
 	Want          map[string][]string
-	Got           map[string][]string
+	Got           map[string][]string `json:"Got,omitempty"`
 	Soundness     Soundness
-	Unsoundness   rawUnsoundness
+	Unsoundness   *rawUnsoundness `json:"Unsoundness,omitempty"`
 	Method        string
-	MethodCounts  map[string]int
+	MethodCounts  map[string]int `json:"MethodCounts,omitempty"`
 	Elapsed       time.Duration
-	CalleeResults [][]rawSoundnessResult
+	CalleeResults [][]rawSoundnessResult `json:"CalleeResults,omitempty"`
 }
 
 type rawUnsoundness struct {
 	// BadForm is the string representation of Unsoundness.BadForm (nil errors serialize to an
 	// empty string), since the error interface itself does not marshal to JSON.
-	BadForm              string
-	UnprovenMustNotFlows []string
-	CheckFeatures        UnsoundCheckFeatures
-	DataflowFeatures     rawUnsoundDataflowFeatures
+	BadForm              string                      `json:"BadForm,omitempty"`
+	UnprovenMustNotFlows []string                    `json:"UnprovenMustNotFlows,omitempty"`
+	CheckFeatures        *UnsoundCheckFeatures       `json:"CheckFeatures,omitempty"`
+	DataflowFeatures     *rawUnsoundDataflowFeatures `json:"DataflowFeatures,omitempty"`
 }
 
 // rawUnsoundDataflowFeatures is the JSON-serializable form of UnsoundDataflowFeatures: it replaces
 // IntraTaintErrors ([]error, which has no exported fields to marshal) with its string
 // representation via newRawUnsoundDataflowFeatures.
 type rawUnsoundDataflowFeatures struct {
-	RecoverUsages      []token.Position
-	GoUsages           []token.Position
-	HasUnboundedDefers bool
-	TimedOut           bool
-	IntraTaintErrors   []string
+	RecoverUsages      []token.Position `json:"RecoverUsages,omitempty"`
+	GoUsages           []token.Position `json:"GoUsages,omitempty"`
+	HasUnboundedDefers bool             `json:"HasUnboundedDefers,omitempty"`
+	TimedOut           bool             `json:"TimedOut,omitempty"`
+	IntraTaintErrors   []string         `json:"IntraTaintErrors,omitempty"`
 }
 
-func newRawUnsoundDataflowFeatures(f UnsoundDataflowFeatures) rawUnsoundDataflowFeatures {
-	return rawUnsoundDataflowFeatures{
+func newRawUnsoundDataflowFeatures(f UnsoundDataflowFeatures) *rawUnsoundDataflowFeatures {
+	if f.isSound() {
+		return nil
+	}
+	return &rawUnsoundDataflowFeatures{
 		RecoverUsages:      f.RecoverUsages,
 		GoUsages:           f.GoUsages,
 		HasUnboundedDefers: f.HasUnboundedDefers,
@@ -388,18 +391,29 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 		badForm = r.Unsoundness.BadForm.Error()
 	}
 
-	return rawSoundnessResult{
-		Func:        r.Name,
-		SummaryName: r.SummaryName,
-		Want:        rawFlows(r.Want.Flows),
-		Got:         rawFlows(r.Got.Flows),
-		Soundness:   r.Soundness,
-		Unsoundness: rawUnsoundness{
+	var checkFeatures *UnsoundCheckFeatures
+	if !r.Unsoundness.CheckFeatures.isSound() {
+		checkFeatures = &r.Unsoundness.CheckFeatures
+	}
+
+	var unsoundness *rawUnsoundness
+	if badForm != "" || len(r.Unsoundness.UnprovenMustNotFlows) > 0 || checkFeatures != nil ||
+		!r.Unsoundness.DataflowFeatures.isSound() {
+		unsoundness = &rawUnsoundness{
 			BadForm:              badForm,
 			UnprovenMustNotFlows: funcutil.Map(r.Unsoundness.UnprovenMustNotFlows, (Flow).String),
-			CheckFeatures:        r.Unsoundness.CheckFeatures,
+			CheckFeatures:        checkFeatures,
 			DataflowFeatures:     newRawUnsoundDataflowFeatures(r.Unsoundness.DataflowFeatures),
-		},
+		}
+	}
+
+	return rawSoundnessResult{
+		Func:          r.Name,
+		SummaryName:   r.SummaryName,
+		Want:          rawFlows(r.Want.Flows),
+		Got:           rawFlows(r.Got.Flows),
+		Soundness:     r.Soundness,
+		Unsoundness:   unsoundness,
 		Method:        string(r.Method),
 		MethodCounts:  methodCounts,
 		Elapsed:       r.Time,
