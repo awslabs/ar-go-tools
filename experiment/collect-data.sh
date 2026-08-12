@@ -34,12 +34,10 @@ run() {
 for repo in amazon-ssm-agent badger govatar prometheus sample; do
   mkdir -p "experiment/results/$repo"
 
-  # Each step below is its own container, so the configs must live on a mount to survive between
-  # them. Without this, run-check finds no check-*-split-*.yaml at all.
-  echo "=== $repo: generate-configs ==="
-  run "$repo" generate-configs --repo "$repo" \
-    || echo "$repo generate-configs FAILED (exit $?)"
-
+  # generate-configs is no longer a separate step: run-check/run-constructive/run-taint/
+  # run-llm-summarization each (re)generate generated-configs/<repo>/ themselves before running,
+  # so the mount above just needs to persist generated-configs across containers, not be
+  # pre-populated by a dedicated step.
   echo "=== $repo: run-check ==="
   run "$repo" run-check --repo "$repo" --variant ground-truth \
     || echo "$repo run-check FAILED (exit $?)"

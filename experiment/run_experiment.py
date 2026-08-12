@@ -145,6 +145,11 @@ def main() -> int:
         "--inference-profile",
         help="Bedrock inference profile ARN/ID (skips auto-detection if set)",
     )
+    p.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Regenerate every function from scratch instead of resuming (the default).",
+    )
     p.set_defaults(func=cmd_run_llm_summarization)
 
     p = subparsers.add_parser(
@@ -258,11 +263,13 @@ def main() -> int:
 
 
 def cmd_run_check(args: argparse.Namespace) -> None:
+    _generate_configs_for_repo(args.repo)
     out = _result_path(args.repo, f"run-check-{args.variant}-results")
     _run_check_split(args.repo, args.variant, out)
 
 
 def cmd_run_constructive(args: argparse.Namespace) -> None:
+    _generate_configs_for_repo(args.repo)
     methods_paths = [args.methods] if args.methods else _ground_truth_files(args.repo)
     out = _result_path(args.repo, "run-constructive-results")
     _write_check_report(
@@ -283,8 +290,14 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     shared file, so one batch's mistake can't corrupt another's output. Once all batches are
     done, these are concatenated into a single summaries.yaml -- the file taint-llm.yaml/
     check-llm.yaml actually reference.
+
+    If a run fails partway through (e.g. a transient model error), rerunning this command
+    resumes after the last completed batch rather than starting over, and retries
+    automatically a few times before giving up. Pass --fresh to ignore prior progress and
+    regenerate everything.
     """
     repo_dir(args.repo)  # sanity check that the repo checkout exists
+    _generate_configs_for_repo(args.repo)
 
     llm_dir = LLM_SUMMARIES_DIR / args.repo
     llm_dir.mkdir(parents=True, exist_ok=True)
@@ -293,16 +306,13 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     # check-llm.yaml already points check-specs at summaries_path, so the agent can validate
     # its own output via argot_dataflow_check with no per-run config needed.
     config_path = GENERATED_CONFIGS_DIR / args.repo / "check-llm.yaml"
-    if not config_path.exists():
-        console.print(
-            f"[red]{config_path} not found; run generate-configs --repo {args.repo} first[/red]"
-        )
-        sys.exit(1)
     config = yaml.safe_load(config_path.read_text())
 
     target_name = args.target or (config.get("targets") or [{}])[0].get("name")
     if not target_name:
-        console.print(f"[red]run-llm-summarization: no target found in {config_path}[/red]")
+        console.print(
+            f"[red]run-llm-summarization: no target found in {config_path}[/red]"
+        )
         sys.exit(1)
 
     functions_path = INTERESTING_METHODS_DIR / args.repo / "to_summarize.json"
@@ -312,49 +322,83 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
             f"--repo {args.repo} first[/red]"
         )
         sys.exit(1)
+    all_functions = json.loads(functions_path.read_text())
+
+    if args.fresh:
+        for stale in llm_dir.glob("summaries-*.yaml"):
+            stale.unlink()
 
     stats_path = llm_dir / "summarize-stats.json"
     out = _result_path(args.repo, "run-llm-summarization-results")
     log_file = out.with_suffix(".log")
-    cmd = [
-        "argot-summarize",
-        "--config",
-        str(config_path.resolve()),
-        "--target",
-        target_name,
-        "--functions",
-        str(functions_path.resolve()),
-        "--out-dir",
-        str(llm_dir.resolve()),
-        "--stats-json",
-        str(stats_path),
-        "--model",
-        args.model,
-    ]
-    if args.inference_profile:
-        cmd += ["--inference-profile", args.inference_profile]
-    # Batched to avoid hitting the model's max-output-tokens limit on larger function lists.
-    cmd += ["--batch-size", "1"]
 
-    duration = _run_subprocess(
-        cmd,
-        cwd=llm_dir,
-        log_file=log_file,
-        label=f"run-llm-summarization ({args.repo})",
-        timeout=None,
-    )
+    total_duration = 0.0
+    max_attempts = 10
+    for attempt in range(1, max_attempts + 1):
+        # Batches are numbered summaries-0001.yaml, summaries-0002.yaml, ... in the order
+        # functions were passed in, one per function (--batch-size 1 below), and the agent
+        # aborts the whole run on the first error -- so however many of these already exist
+        # is exactly how many leading functions are done, and the rest is what's left to do.
+        num_done = len(list(llm_dir.glob("summaries-*.yaml")))
+        remaining = all_functions[num_done:]
+        if not remaining:
+            break
+
+        remaining_path = llm_dir / "to_summarize.remaining.json"
+        remaining_path.write_text(json.dumps(remaining, indent=2))
+
+        cmd = [
+            "argot-summarize",
+            "--config",
+            str(config_path.resolve()),
+            "--target",
+            target_name,
+            "--functions",
+            str(remaining_path.resolve()),
+            "--out-dir",
+            str(llm_dir.resolve()),
+            "--stats-json",
+            str(stats_path),
+            "--model",
+            args.model,
+        ]
+        if args.inference_profile:
+            cmd += ["--inference-profile", args.inference_profile]
+        cmd += ["--batch-size", "1"]
+
+        try:
+            total_duration += _run_subprocess(
+                cmd,
+                cwd=llm_dir,
+                log_file=log_file,
+                label=f"run-llm-summarization ({args.repo}), attempt {attempt}/{max_attempts}",
+                timeout=None,
+            )
+        except subprocess.CalledProcessError:
+            remaining_path.unlink(missing_ok=True)
+            if attempt == max_attempts:
+                raise
+            backoff_seconds = min(2**attempt, 60)
+            console.print(
+                f"[yellow]run-llm-summarization ({args.repo}): attempt {attempt}/{max_attempts} "
+                f"failed, retrying in {backoff_seconds}s...[/yellow]"
+            )
+            time.sleep(backoff_seconds)
+        else:
+            remaining_path.unlink(missing_ok=True)
 
     _consolidate_batch_summaries(llm_dir, summaries_path)
 
     stats = json.loads(stats_path.read_text()) if stats_path.exists() else None
     result = {
         "repo": args.repo,
-        "duration_seconds": round(duration, 2),
+        "duration_seconds": round(total_duration, 2),
         "stats": stats,
         "summaries_path": str(summaries_path),
     }
     out.write_text(json.dumps(result, indent=2))
-    console.print(f"[green]Wrote {out}[/green] ({duration:.1f}s)")
+    console.print(f"[green]Wrote {out}[/green] ({total_duration:.1f}s)")
+    console.print(f"[green]Subprocess log (last attempt): {log_file}[/green]")
     console.print(f"[green]Generated summaries in {summaries_path}[/green]")
 
 
@@ -372,12 +416,8 @@ def _consolidate_batch_summaries(llm_dir: Path, summaries_path: Path) -> None:
 def cmd_run_taint(args: argparse.Namespace) -> None:
     """Run argot taint using the fixed generated-configs/<repo>/taint-<variant>.yaml."""
     repo_path = repo_dir(args.repo)
+    _generate_configs_for_repo(args.repo)
     config_path = GENERATED_CONFIGS_DIR / args.repo / f"taint-{args.variant}.yaml"
-    if not config_path.exists():
-        console.print(
-            f"[red]{config_path} not found; run generate-configs --repo {args.repo} first[/red]"
-        )
-        sys.exit(1)
 
     (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
 
@@ -419,12 +459,8 @@ def cmd_run_find_interesting_methods(args: argparse.Namespace) -> None:
     # with cwd=repo_path.
 
     repo_path = repo_dir(args.repo)
+    _generate_configs_for_repo(args.repo)
     config_path = GENERATED_CONFIGS_DIR / args.repo / "taint-baseline.yaml"
-    if not config_path.exists():
-        console.print(
-            f"[red]{config_path} not found; run generate-configs --repo {args.repo} first[/red]"
-        )
-        sys.exit(1)
 
     (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
 
@@ -666,7 +702,14 @@ def _run_check_split(repo: str, variant: str, out_path: Path) -> None:
         label = f"run-check ({repo}, {variant}, {kind})"
         try:
             duration = _run_subprocess(
-                ["argot", "check", "-config", str(config_path.resolve()), "-via", "all"],
+                [
+                    "argot",
+                    "check",
+                    "-config",
+                    str(config_path.resolve()),
+                    "-via",
+                    "all",
+                ],
                 cwd=repo_path,
                 log_file=log_file,
                 label=label,
@@ -687,7 +730,9 @@ def _run_check_split(repo: str, variant: str, out_path: Path) -> None:
                 report_path = Path(line.split("Full report written to", 1)[1].strip())
                 break
         if report_path is None or not report_path.exists():
-            console.print(f"[red]{label} did not produce a check-report.json; see {log_file}[/red]")
+            console.print(
+                f"[red]{label} did not produce a check-report.json; see {log_file}[/red]"
+            )
             sys.exit(1)
 
         total_duration += duration
@@ -903,7 +948,7 @@ def cmd_generate_configs(args: argparse.Namespace) -> None:
 
 
 def _split_entries_by_kind(
-    entries: List[Dict[str, Any]]
+    entries: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split a flat list of raw dataflow-summaries entries (as loaded from a summaries YAML's
     "dataflow-summaries" key) into (functions, interfaces), using the same discriminator as
@@ -1056,13 +1101,14 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
             return
         entries = _load_all_entries(data_paths)
         functions, interfaces = _split_entries_by_kind(entries)
-        for kind, kind_entries in (("functions", functions), ("interfaces", interfaces)):
+        for kind, kind_entries in (
+            ("functions", functions),
+            ("interfaces", interfaces),
+        ):
             if not kind_entries:
                 continue
             data_path = out_dir / f"_split-{prefix}-{kind}.yaml"
-            data_path.write_text(
-                yaml.safe_dump({"dataflow-summaries": kind_entries})
-            )
+            data_path.write_text(yaml.safe_dump({"dataflow-summaries": kind_entries}))
             produced.add(data_path.name)
             written.append(
                 write_check_config(
@@ -1161,7 +1207,9 @@ def _run_subprocess(
         duration = time.time() - start_time
 
     if proc.returncode != 0 and proc.returncode not in tolerate_exit_codes:
-        console.print(f"[red]{label} failed (exit {proc.returncode}); last lines of {log_file}:[/red]")
+        console.print(
+            f"[red]{label} failed (exit {proc.returncode}); last lines of {log_file}:[/red]"
+        )
         tail = log_file.read_text().splitlines()[-20:]
         console.print("[red]" + "\n".join(tail) + "[/red]")
         raise subprocess.CalledProcessError(proc.returncode, cmd)

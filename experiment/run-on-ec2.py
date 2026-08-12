@@ -212,16 +212,6 @@ def sync_up(ssm, s3, instance_id: str) -> None:
         s3.delete_object(Bucket=TRANSFER_BUCKET, Key=key)
 
 
-def repo_in_command(command: list) -> str:
-    """Return the --repo argument in command, or "" if it names none."""
-    for i, arg in enumerate(command):
-        if arg == "--repo" and i + 1 < len(command):
-            return command[i + 1]
-        if arg.startswith("--repo="):
-            return arg.split("=", 1)[1]
-    return ""
-
-
 def docker_run(quoted_cmd: str, with_local_binaries: bool) -> str:
     mounts = [
         f"-v {REMOTE_REPO_DIR}/experiment/{p}:/usr/src/app/experiment/{p}"
@@ -265,18 +255,6 @@ def main() -> int:
     if synced:
         s3 = boto3.client("s3", region_name=REGION)
         sync_up(ssm, s3, args.instance_id)
-
-        repo = repo_in_command(command)
-        if repo and command[0] != "generate-configs":
-            print(f"Running generate-configs --repo {repo}...")
-            run_ssm_command(
-                ssm,
-                args.instance_id,
-                [
-                    f"cd {REMOTE_REPO_DIR}/experiment",
-                    docker_run(f"generate-configs --repo {repo}", synced),
-                ],
-            )
 
     quoted_cmd = " ".join(f"'{c}'" if " " in c else c for c in command)
     print(f"Running on {args.instance_id}: python3 run_experiment.py {quoted_cmd}")
