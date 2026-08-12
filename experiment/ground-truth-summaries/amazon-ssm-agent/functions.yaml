@@ -41,13 +41,13 @@ dataflow-summaries:
     receiver: "*metric"
     method: "SetException"
     flows:
-      - from: "(!arg 0).exception"
+      - from: "!arg 0"
         to: "(!receiver).AWSException"
-      - from: "(!arg 0).message"
+      - from: "!arg 0"
         to: "(!receiver).AWSExceptionMessage"
-      - from: "(!arg 0).exception"
+      - from: "!arg 0"
         to: "(!receiver).SDKException"
-      - from: "(!arg 0).message"
+      - from: "!arg 0"
         to: "(!receiver).SDKExceptionMessage"
   # ==========================================================================
   # (*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException   (receiver)
@@ -61,11 +61,11 @@ dataflow-summaries:
     receiver: "*metric"
     method: "SetFinalException"
     flows:
-      - from: "(!arg 0).exception"
+      - from: "!arg 0"
         to: "(!receiver).FinalAWSException"
-      - from: "(!arg 0).message"
+      - from: "!arg 0"
         to: "(!receiver).FinalAWSExceptionMessage"
-      - from: "(!arg 0).exception"
+      - from: "!arg 0"
         to: "(!receiver).FinalSDKException"
-      - from: "(!arg 0).message"
+      - from: "!arg 0"
         to: "(!receiver).FinalSDKExceptionMessage"
