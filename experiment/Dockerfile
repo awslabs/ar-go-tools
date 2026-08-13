@@ -1,4 +1,5 @@
-# Reproducible environment for the checker-precision (RQ1) ground-truth experiment.
+# Reproducible environment for the experiment pipeline (RQ1 ground-truth checking and
+# run-llm-summarization, which needs the LLM/Bedrock deps installed below).
 #
 # Build from anywhere (no build context files are needed beyond this file itself):
 #   docker build -t argot-experiment -f experiment/Dockerfile experiment
@@ -39,12 +40,19 @@ RUN git clone https://github.com/o1egl/govatar.git govatar && \
 RUN git clone https://github.com/prometheus/client_golang.git prometheus && \
     git -C prometheus checkout 7ba246a648ca4e294ca008d95b6fcc8df2f9c255
 
-# Minimal Python deps for run_experiment.py (pyyaml + rich only -- no LLM/Bedrock deps needed
-# for the ground-truth RQ1 pipeline).
+# Python deps for run_experiment.py and argot-summarize (the LLM agent used by
+# run-llm-summarization): installing python/ in editable mode pulls in its requirements.txt
+# (pyyaml, rich, plus the LLM/Bedrock deps: strands-agents, mcp, boto3) and registers the
+# argot-summarize console script.
 WORKDIR /usr/src/app
 RUN python3 -m venv experiment/.venv && \
     . experiment/.venv/bin/activate && \
-    pip install --no-cache-dir pyyaml rich
+    pip install --no-cache-dir -e python/
+# The entrypoint below runs .venv/bin/python3 directly rather than activating the venv, so
+# argot-summarize (spawned as a subprocess by run_experiment.py) needs the venv's bin/ on PATH
+# to be found; subprocess.Popen inherits this process's environment, not a shell that ran
+# `activate`.
+ENV PATH="/usr/src/app/experiment/.venv/bin:${PATH}"
 
 WORKDIR /usr/src/app/experiment
 
