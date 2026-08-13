@@ -2,15 +2,13 @@
 
 """
 Run a run_experiment.py command on a remote EC2 instance, inside the argot-experiment Docker
-image (with the same 50GB memory cap as collect-data.sh).
+image (with a 50GB memory cap).
 
-Use this (with fetch-from-ec2.py) to iterate from your local machine: everything that changes
-between runs is synced up and bind-mounted into the container, so testing a local change needs
-neither a git push nor an image rebuild. To populate every repo/command in one shot on the
-instance itself instead (nothing copied back automatically), use collect-data.sh.
+Syncs local changes, rebuilds the image, and launches the command non-blocking. Prints a
+fetch-from-ec2.py invocation to retrieve results once the run completes. fetch-from-ec2.py
+polls runs/<run-id>/run.json on the instance for completion, so no SSM command IDs are needed.
 
-This only runs the command; it does not fetch any output back. Use fetch-from-ec2.py
-separately to copy a resulting file to the local machine.
+--no-sync skips syncing and the image rebuild, using whatever is already on the instance.
 
 This script runs locally only (not inside the Docker image) and requires boto3: pip install
 boto3.
@@ -20,42 +18,11 @@ Usage:
 
 Example:
     python3 run-on-ec2.py i-07f90b78bdeb63408 -- \\
-        run-check --repo badger --variant ground-truth
-
-Every producer/eval command writes its result to a fixed path,
-results/<repo>/<command-name>-results.json, matching collect-data.sh's convention.
-
-What gets synced and mounted, and why each has to be rather than baked into the image:
-
-  - argot itself, cross-compiled locally for linux/amd64. The image builds argot from a git
-    clone, so without this a local change needs a push and an image rebuild.
-  - eval-checker, cross-compiled the same way. It is normally run with `go run`, which inside
-    the container would compile it against the image's clone of analysis/summaries rather than
-    the local one.
-  - run_experiment.py, and the find-interesting-methods source it shells out to with `go run`
-    (which does compile against the image's clone).
-  - llm-summaries, which is not tracked in git, so the clone cannot supply it. Without it
-    generate-configs writes no check-llm-split-*.yaml.
-  - argot-configs, ground-truth-summaries, interesting-methods: inputs that change as the
-    experiment is developed.
-  - generated-configs, so hand-written configs are available remotely, and because each command
-    runs in its own container: configs written by generate-configs must outlive it to be visible
-    to a later run-check.
-
-generate-configs runs on the instance for the --repo named in the command, rather than syncing
-locally generated configs and trusting them, because a config's project-root is a relative path
-that has to resolve inside the container. It overwrites only the files it produces, so syncing
-hand-written configs and regenerating do not conflict.
-
---no-sync skips all of the above and uses whatever is already on the instance, including the
-image's own argot binary and `go run` for eval-checker.
-
-Transfers use a presigned S3 URL, matching fetch-from-ec2.py: the instance has no IAM role for
-S3, so it only ever sees a short-lived signed URL. Local credentials need
-s3:PutObject/GetObject/DeleteObject on the transfer bucket.
+        run-check --repo badger --variant ground-truth --run-id 2026-08-13_14-25-30Z
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -65,6 +32,7 @@ import uuid
 from pathlib import Path
 
 import boto3
+from botocore.exceptions import ClientError
 
 REGION = "us-east-1"
 TRANSFER_BUCKET = "argot-experiment-transfer-127797153327"
@@ -72,83 +40,96 @@ REMOTE_REPO_DIR = "/home/ubuntu/ar-go-tools"
 EXPERIMENT_DIR = Path(__file__).parent
 REPO_ROOT = EXPERIMENT_DIR.parent
 
-# Paths under experiment/ mirrored up to the instance before each run, and bind-mounted into the
-# container at the same relative location. Missing ones are skipped.
+BEDROCK_ROLE_NAME = "argot-experiment-bedrock"
+BEDROCK_POLICY_NAME = "bedrock-invoke"
+
+# Paths synced to the instance. Dockerfile drives the image rebuild but isn't mounted.
 SYNC_PATHS = [
     "run_experiment.py",
+    "Dockerfile",
     "argot-configs",
     "eval-checker",
-    "find-interesting-methods",
     "ground-truth-summaries",
     "interesting-methods",
-    "llm-summaries",
-    "generated-configs",
 ]
 
-# results is mounted but never synced up: the instance is what produces it.
-MOUNT_PATHS = ["results", *SYNC_PATHS]
+# Bind-mounted into the container (everything synced except Dockerfile, plus runs/).
+MOUNT_PATHS = [p for p in SYNC_PATHS if p != "Dockerfile"] + ["runs"]
 
-# Where the locally built binaries are staged on the instance, and where they are mounted in the
-# container. The image's `go install` puts argot in /go/bin (GOPATH=/go in the golang image), which
-# is on PATH, so mounting there overrides it.
 REMOTE_BIN_DIR = f"{REMOTE_REPO_DIR}/experiment/.bin"
 CONTAINER_BIN_DIR = "/go/bin"
 
-# Tools cross-compiled locally and mounted, so that they run the local tree's code rather than the
-# clone baked into the image. eval-checker is not in the image and is normally run with `go run`;
-# EVAL_CHECKER_BIN points run_experiment.py at the mounted binary instead.
 LOCAL_BINARIES = {
     "argot": "./cmd/argot",
     "eval-checker": "./experiment/eval-checker",
+    "argot-mcp-server": "./cmd/argot-mcp-server",
 }
 
 
-def run_ssm_command(
-    ssm, instance_id: str, commands: list, timeout_seconds: int = 7200
-) -> None:
-    """Send a shell command via SSM and block until it completes, printing output and raising
-    on failure."""
-    resp = ssm.send_command(
-        InstanceIds=[instance_id],
-        DocumentName="AWS-RunShellScript",
-        Parameters={"commands": commands},
-        TimeoutSeconds=timeout_seconds,
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    command_id = resp["Command"]["CommandId"]
+    parser.add_argument("instance_id")
+    parser.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="use what is already on the instance, including the current image (skips rebuild)",
+    )
 
-    while True:
-        time.sleep(5)
-        inv = ssm.get_command_invocation(CommandId=command_id, InstanceId=instance_id)
-        status = inv["Status"]
-        if status in ("Pending", "InProgress", "Delayed"):
-            continue
-        print(inv.get("StandardOutputContent", ""))
-        if status != "Success":
-            print(inv.get("StandardErrorContent", ""), file=sys.stderr)
-            raise RuntimeError(f"SSM command failed with status {status}")
-        return
+    argv = sys.argv[1:]
+    if "--" in argv:
+        split = argv.index("--")
+        own_args, command = argv[:split], argv[split + 1 :]
+    else:
+        own_args, command = argv, []
+
+    args = parser.parse_args(own_args)
+    if not command:
+        parser.error("no command given after --")
+
+    ssm = boto3.client("ssm", region_name=REGION)
+    synced = not args.no_sync
+
+    iam = boto3.client("iam", region_name=REGION)
+    ec2 = boto3.client("ec2", region_name=REGION)
+    ensure_bedrock_access(iam, ec2, args.instance_id)
+
+    if synced:
+        s3 = boto3.client("s3", region_name=REGION)
+        sync_up(ssm, s3, args.instance_id)
+
+    quoted_cmd = " ".join(f"'{c}'" if " " in c else c for c in command)
+    print(f"Running on {args.instance_id}: python3 run_experiment.py {quoted_cmd}")
+
+    command_id = send_ssm_command(
+        ssm,
+        args.instance_id,
+        [
+            f"mkdir -p {REMOTE_REPO_DIR}/experiment/runs",
+            f"cd {REMOTE_REPO_DIR}/experiment",
+            docker_run(quoted_cmd, synced),
+        ],
+    )
+    print(f"Launched, not waiting for completion. Command ID: {command_id}")
+
+    # Print fetch hint
+    run_id = ""
+    if "--run-id" in command:
+        run_id = command[command.index("--run-id") + 1]
+    run_id_part = run_id if run_id else "<RUN_ID>"
+    print(
+        f"Fetch the result with:\npython3 fetch-from-ec2.py {args.instance_id} --run-id {run_id_part}"
+    )
+    return 0
 
 
-def build_binaries(dest_dir: Path) -> None:
-    """Cross-compile every tool in LOCAL_BINARIES for the instance (linux/amd64) into dest_dir."""
-    env = dict(os.environ)
-    env.update({"CGO_ENABLED": "0", "GOOS": "linux", "GOARCH": "amd64"})
-    for name, pkg in LOCAL_BINARIES.items():
-        print(f"Building {name} for linux/amd64...")
-        subprocess.run(
-            ["go", "build", "-o", str(dest_dir / name), pkg],
-            cwd=REPO_ROOT,
-            check=True,
-            env=env,
-        )
+# ---------------------------------------------------------------------------
+# Sync and Docker
+# ---------------------------------------------------------------------------
 
 
 def sync_up(ssm, s3, instance_id: str) -> None:
-    """Copy the locally built binaries and every present path in SYNC_PATHS to the instance.
-
-    Extraction merges into what is already there rather than replacing it, so a file present
-    remotely but not locally survives.
-    """
     present = [p for p in SYNC_PATHS if (EXPERIMENT_DIR / p).exists()]
     missing = [p for p in SYNC_PATHS if p not in present]
     if missing:
@@ -160,9 +141,6 @@ def sync_up(ssm, s3, instance_id: str) -> None:
         build_binaries(staged_bin)
 
         archive = Path(tmp) / "sync.tgz"
-        # -C per member so the binaries land in .bin/ while the rest keep their own paths.
-        # COPYFILE_DISABLE stops macOS tar emitting AppleDouble ._* companions, which would match
-        # globs like *.yaml on the instance and be parsed as input.
         subprocess.run(
             [
                 "tar",
@@ -197,7 +175,7 @@ def sync_up(ssm, s3, instance_id: str) -> None:
             ssm,
             instance_id,
             [
-                f"set -e",
+                "set -e",
                 f"cd {remote_exp}",
                 f"curl -fsS -o /tmp/{key} '{download_url}'",
                 f"tar xzf /tmp/{key} -C {remote_exp}",
@@ -210,6 +188,18 @@ def sync_up(ssm, s3, instance_id: str) -> None:
         )
     finally:
         s3.delete_object(Bucket=TRANSFER_BUCKET, Key=key)
+
+    print("Rebuilding the argot-experiment Docker image...")
+    run_ssm_command(
+        ssm,
+        instance_id,
+        [
+            "set -e",
+            f"cd {REMOTE_REPO_DIR}/experiment",
+            "docker build --no-cache -t argot-experiment -f Dockerfile .",
+        ],
+        timeout_seconds=1800,
+    )
 
 
 def docker_run(quoted_cmd: str, with_local_binaries: bool) -> str:
@@ -230,40 +220,148 @@ def docker_run(quoted_cmd: str, with_local_binaries: bool) -> str:
     )
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+def build_binaries(dest_dir: Path) -> None:
+    env = {**os.environ, "CGO_ENABLED": "0", "GOOS": "linux", "GOARCH": "amd64"}
+    for name, pkg in LOCAL_BINARIES.items():
+        print(f"Building {name} for linux/amd64...")
+        subprocess.run(
+            ["go", "build", "-o", str(dest_dir / name), pkg],
+            cwd=REPO_ROOT,
+            check=True,
+            env=env,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bedrock IAM setup
+# ---------------------------------------------------------------------------
+
+
+EC2_ASSUME_ROLE_POLICY = json.dumps(
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"Service": "ec2.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
+    }
+)
+BEDROCK_INVOKE_POLICY = json.dumps(
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:ListInferenceProfiles",
+                    "bedrock:GetInferenceProfile",
+                ],
+                "Resource": "*",
+            }
+        ],
+    }
+)
+
+
+def ensure_bedrock_access(iam, ec2, instance_id: str) -> None:
+    try:
+        iam.get_role(RoleName=BEDROCK_ROLE_NAME)
+        print(f"IAM role {BEDROCK_ROLE_NAME} already exists")
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "NoSuchEntity":
+            raise
+        print(f"Creating IAM role {BEDROCK_ROLE_NAME}...")
+        iam.create_role(
+            RoleName=BEDROCK_ROLE_NAME,
+            AssumeRolePolicyDocument=EC2_ASSUME_ROLE_POLICY,
+        )
+
+    iam.put_role_policy(
+        RoleName=BEDROCK_ROLE_NAME,
+        PolicyName=BEDROCK_POLICY_NAME,
+        PolicyDocument=BEDROCK_INVOKE_POLICY,
     )
-    parser.add_argument("instance_id")
-    parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="use what is already on the instance, including the image's own binaries",
+
+    try:
+        iam.get_instance_profile(InstanceProfileName=BEDROCK_ROLE_NAME)
+        print(f"Instance profile {BEDROCK_ROLE_NAME} already exists")
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "NoSuchEntity":
+            raise
+        print(f"Creating instance profile {BEDROCK_ROLE_NAME}...")
+        iam.create_instance_profile(InstanceProfileName=BEDROCK_ROLE_NAME)
+        iam.add_role_to_instance_profile(
+            InstanceProfileName=BEDROCK_ROLE_NAME, RoleName=BEDROCK_ROLE_NAME
+        )
+        time.sleep(10)
+
+    associations = ec2.describe_iam_instance_profile_associations(
+        Filters=[
+            {"Name": "instance-id", "Values": [instance_id]},
+            {"Name": "state", "Values": ["associating", "associated"]},
+        ]
+    )["IamInstanceProfileAssociations"]
+    attached_names = {
+        a["IamInstanceProfile"]["Arn"].rsplit("/", 1)[-1] for a in associations
+    }
+    if BEDROCK_ROLE_NAME in attached_names:
+        print(f"Instance profile {BEDROCK_ROLE_NAME} already attached to {instance_id}")
+        return
+
+    for a in associations:
+        print(
+            f"Replacing existing instance profile "
+            f"{a['IamInstanceProfile']['Arn']} on {instance_id}..."
+        )
+        ec2.replace_iam_instance_profile_association(
+            AssociationId=a["AssociationId"],
+            IamInstanceProfile={"Name": BEDROCK_ROLE_NAME},
+        )
+        return
+
+    print(f"Attaching instance profile {BEDROCK_ROLE_NAME} to {instance_id}...")
+    ec2.associate_iam_instance_profile(
+        IamInstanceProfile={"Name": BEDROCK_ROLE_NAME}, InstanceId=instance_id
     )
-    parser.add_argument("command", nargs=argparse.REMAINDER)
-    args = parser.parse_args()
 
-    command = args.command
-    if command and command[0] == "--":
-        command = command[1:]
-    if not command:
-        parser.error("no command given after --")
 
-    ssm = boto3.client("ssm", region_name=REGION)
-    synced = not args.no_sync
+# ---------------------------------------------------------------------------
+# SSM helpers
+# ---------------------------------------------------------------------------
 
-    if synced:
-        s3 = boto3.client("s3", region_name=REGION)
-        sync_up(ssm, s3, args.instance_id)
 
-    quoted_cmd = " ".join(f"'{c}'" if " " in c else c for c in command)
-    print(f"Running on {args.instance_id}: python3 run_experiment.py {quoted_cmd}")
-    run_ssm_command(
-        ssm,
-        args.instance_id,
-        [f"cd {REMOTE_REPO_DIR}/experiment", docker_run(quoted_cmd, synced)],
+def send_ssm_command(
+    ssm, instance_id: str, commands: list, timeout_seconds: int = 7200
+) -> str:
+    resp = ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters={"commands": commands},
+        TimeoutSeconds=timeout_seconds,
     )
-    return 0
+    return resp["Command"]["CommandId"]
+
+
+def run_ssm_command(
+    ssm, instance_id: str, commands: list, timeout_seconds: int = 7200
+) -> None:
+    command_id = send_ssm_command(ssm, instance_id, commands, timeout_seconds)
+    while True:
+        time.sleep(5)
+        inv = ssm.get_command_invocation(CommandId=command_id, InstanceId=instance_id)
+        status = inv["Status"]
+        if status in ("Pending", "InProgress", "Delayed"):
+            continue
+        print(inv.get("StandardOutputContent", ""))
+        if status != "Success":
+            print(inv.get("StandardErrorContent", ""), file=sys.stderr)
+            raise RuntimeError(f"SSM command failed with status {status}")
+        return
 
 
 if __name__ == "__main__":

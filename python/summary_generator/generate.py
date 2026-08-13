@@ -228,7 +228,7 @@ For other providers, use their model IDs:
         "inference_profile": args.inference_profile,
     }
 
-    logging.getLogger("strands").setLevel(logging.DEBUG)
+    logging.getLogger("strands").setLevel(logging.INFO)
     log_out = "summary-generator.log"
     if args.output:
         log_out = args.output
