@@ -13,8 +13,12 @@ in sequence) never re-runs the (possibly expensive) producer commands:
     eval-checker-efficiency  RQ: checker-efficiency
     eval-checker-ablation    RQ: checker-ablation
 
---repo is mandatory for every command. To run a command across multiple repos, loop over
-this script from the shell.
+--repo is mandatory for every command. Producer commands (run-check, run-constructive,
+run-llm-summarization, run-taint, run-find-interesting-methods) also accept --repo all, which
+runs the command once per repo in REPOS; a repo that fails is logged and skipped so the rest
+still run (useful for an unattended/overnight run across every repo). eval-* commands do not
+accept --repo all, since their other arguments (e.g. --check-report) are specific file paths
+that would otherwise be silently reused across repos.
 """
 
 import argparse
@@ -89,6 +93,16 @@ REPOS: Dict[str, RepoInfo] = {
 }
 
 
+ALL_REPOS = "all"
+
+
+def add_repo_arg(p: argparse.ArgumentParser, all_repos: bool = False) -> None:
+    """Add the standard --repo argument. If all_repos, "all" is also accepted, meaning: run
+    this command once per repo in REPOS (see main's expansion of ALL_REPOS)."""
+    choices = sorted(REPOS) + ([ALL_REPOS] if all_repos else [])
+    p.add_argument("--repo", required=True, choices=choices)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -106,7 +120,7 @@ def main() -> int:
     p = subparsers.add_parser(
         "run-check", help="Run the soundness checker against a summaries file"
     )
-    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    add_repo_arg(p, all_repos=True)
     p.add_argument(
         "--variant",
         required=True,
@@ -121,7 +135,7 @@ def main() -> int:
         "run-constructive",
         help="Run the constructive (naive) approach against a list of methods",
     )
-    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    add_repo_arg(p, all_repos=True)
     p.add_argument(
         "--methods",
         type=Path,
@@ -135,7 +149,7 @@ def main() -> int:
         help="Run the LLM agent (argot-summarize) to generate dataflow summaries for repo's "
         "to_summarize.json",
     )
-    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    add_repo_arg(p, all_repos=True)
     p.add_argument(
         "--target",
         help="Target name to load (default: the repo's first argot-config.yaml target)",
@@ -156,7 +170,7 @@ def main() -> int:
         "run-taint",
         help="Run the taint analysis using one of repo's fixed generated configs",
     )
-    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    add_repo_arg(p, all_repos=True)
     p.add_argument(
         "--variant",
         choices=["baseline", "ground-truth", "llm"],
@@ -171,7 +185,7 @@ def main() -> int:
         "run-find-interesting-methods",
         help="Run find-interesting-methods (produce then consume) against repo's built config",
     )
-    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    add_repo_arg(p, all_repos=True)
     p.set_defaults(func=cmd_run_find_interesting_methods)
 
     p = subparsers.add_parser(
@@ -253,7 +267,32 @@ def main() -> int:
     p.set_defaults(func=_not_implemented("latex"))
 
     args = parser.parse_args()
-    args.func(args)
+    if getattr(args, "repo", None) == ALL_REPOS:
+        failed = []
+        for repo in sorted(REPOS):
+            args.repo = repo
+            console.print(f"[bold]=== {args.command} --repo {repo} ===[/bold]")
+            try:
+                args.func(args)
+            except SystemExit as e:
+                if e.code not in (0, None):
+                    console.print(
+                        f"[red]{args.command} --repo {repo} failed (exit {e.code}); "
+                        "continuing with the remaining repos.[/red]"
+                    )
+                    failed.append(repo)
+            except Exception as e:  # noqa: BLE001 -- deliberately broad: one repo's
+                # exception must not stop the rest from running unattended.
+                console.print(
+                    f"[red]{args.command} --repo {repo} failed ({e}); continuing with "
+                    "the remaining repos.[/red]"
+                )
+                failed.append(repo)
+        if failed:
+            console.print(f"[red]Failed repos: {', '.join(failed)}[/red]")
+            return 1
+    else:
+        args.func(args)
     return 0
 
 
