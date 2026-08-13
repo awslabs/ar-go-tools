@@ -50,34 +50,17 @@ class CacheBustingMCPTool(MCPAgentTool):
 
 WORKFLOW_PROMPT = """You are an expert at generating dataflow summaries for Go functions.
 
-Your workflow:
-1. Load the program using argot_load with the provided config file(s) and target name
-2. Read the dataflow summary generation prompt using get_dataflow_summary_prompt to understand the format
-3. For each function in the provided list:
-   - Use `go doc <function>` to see the function signature and documentation.
-   - Use `go doc -src <function>` to see the source code of the function.
-   - Make sure the summary includes taint flows within all callees.
-   - Generate a dataflow summary following the YAML format from the prompt
-4. Write the summaries with write_yaml_file, using exactly the filename given in the request
-   (not a name based on the function/package)
-5. Validate the file you just wrote with check_summary_valid (pass the same filename as
-   'path'). If it reports any problems (e.g. a self-flow, or a summary with no real flows
-   once self-flows are removed), fix the affected summaries and write the file again with
-   write_yaml_file, then re-validate. Repeat until check_summary_valid reports no problems.
+Follow the workflow in the dataflow summary generation instructions below. Key points:
 
-You have access to file operations:
-- get_dataflow_summary_prompt: Get the dataflow summary generation instructions
-- list_files: List files in a directory
-- read_file: Read any text file
-- write_yaml_file: Write YAML files (only .yaml/.yml extensions allowed)
-- check_summary_valid: Check a summaries file for well-formedness problems (e.g. self-flows)
-  that are detectable from the YAML alone, without loading the program
+- Use argot_show_src for functions in the loaded program. If it fails, use go_doc with
+  src=true instead — do not retry argot_show_src with different patterns.
+- Always use fully qualified package paths with go_doc (e.g. "text/template/parse.Tree.Parse").
+- For pointer receivers, omit the star: "text/tabwriter.Writer.Write" (not "*Writer.Write").
+- Don't waste context inspecting well-known stdlib functions whose behavior is obvious.
+- Write the summary with write_yaml_file using exactly the filename given in the request.
+- Include a YAML comment block (# lines) at the top explaining your reasoning.
 
-All file operations are restricted to a dedicated output directory and its subdirectories (not the config file's own directory, and not the analyzed program's directory).
-
-Include all possible flows in the summaries, but make sure to be as precise as possible. Only include a flow in the summary if you are reasonably sure it exists.
-
-Use field-sensitive summaries whenever possible. The maximum access path length is 3: (e.g., a.b.c).
+Available file tools: list_files, read_file, write_yaml_file (restricted to output directory).
 """
 
 
@@ -124,7 +107,7 @@ def get_inference_profile(region: str, model_id: str) -> str:
         return model_id
 
 
-def create_summary_agent(argot_mcp_path: str, model_config: dict, out_dir: str, mcp_cwd: str):
+def create_summary_agent(argot_mcp_path: str, model_config: dict, out_dir: str, mcp_cwd: str, allowed_filename: str | None = None):
     """Create a Strands agent configured for summary generation.
     
     Args:
@@ -152,7 +135,7 @@ def create_summary_agent(argot_mcp_path: str, model_config: dict, out_dir: str, 
         )
     ))
     
-    file_tools = SafeFileTools(out_dir)
+    file_tools = SafeFileTools(out_dir, allowed_filename=allowed_filename)
 
     # Walk up from out_dir (not mcp_cwd, which is an external repo for everything but
     # sample) to find cmd/argot-mcp-server.
@@ -212,76 +195,23 @@ def format_spec_iterm(spec_item: dict) -> str:
         return f"- {spec_item.get('package')}.{recv}.{spec_item.get('function') or spec_item.get('method')}"    
     return f"- {spec_item.get('package')}.{spec_item.get('function') or spec_item.get('method')}"    
 
-def generate_summaries(agent, config_paths: list[str], target: str, functions: list[dict], batch_size: int | None = None) -> str:
-    """Generate dataflow summaries for a list of functions.
-    
-    Args:
-        agent: Configured Strands Agent
-        config_paths: List of Argot config file paths
-        target: Target name in config to analyze
-        functions: List of function specifications, each with:
-            - package: Package name
-            - function/method: Function or method name
-            - receiver/interface: (optional) For methods or interfaces
-        batch_size: Number of functions to process per batch (None = all at once)
-    
-    Returns:
-        YAML string with all generated summaries
+
+def entry_filename(entry: dict) -> str:
+    """Derive a stable, filesystem-safe YAML filename from a summary entry.
+
+    Examples: "fmt.Printf.yaml", "text_tabwriter.Writer.Write.yaml",
+    "text_template_parse.Tree.Parse.yaml"
     """
-    if batch_size is None or batch_size >= len(functions):
-        # Process all at once
-        return _generate_batch(agent, config_paths, target, functions, 1, None)
-    
-    # Process in batches
-    all_summaries = []
-    for i in range(0, len(functions), batch_size):
-        batch = functions[i:i + batch_size]
-        batch_num = i // batch_size + 1
-        total_batches = (len(functions) + batch_size - 1) // batch_size
-        
-        print(f"Processing batch {batch_num}/{total_batches} ({len(batch)} functions)...", file=sys.stderr)
-        
-        # Provide previous summaries as context
-        context = "\n".join(all_summaries) if all_summaries else None
-        result = _generate_batch(agent, config_paths, target, batch, batch_num, context)
-        all_summaries.append(result)
-    
-    return "\n".join(all_summaries)
-
-
-def _generate_batch(
-    agent, config_paths: list[str], target: str, functions: list[dict],
-    batch_num: int, previous_context: str | None = None,
-) -> str:
-    """Generate summaries for a single batch of functions."""
-    func_list = "\n".join([format_spec_iterm(f) for f in functions])
-    out_file = f"summaries-{batch_num:04d}.yaml"
-    
-    context_section = ""
-    if previous_context:
-        context_section = f"""
-Previously generated summaries (for context):
-```yaml
-{previous_context}
-```
-
-"""
-    
-    prompt = f"""Generate dataflow summaries for the following Go program:
-
-Config file(s): {', '.join(config_paths)}
-Target: {target}
-
-{context_section}Functions to summarize:
-{func_list}
-
-Follow the workflow:
-0. Load the config using argot_reload_config by passing the config file 
-1. Load the program with argot_load using the config file(s) and target (provide the target argument, not paths)
-2. For each function, gather context and generate a summary
-3. Write the summaries to {out_file} with write_yaml_file, using exactly that filename
-   (not a name based on the function/package). Output the same YAML document as your response.
-4. Validate {out_file} with check_summary_valid. If it reports any problems, fix the
-   affected summaries, write the file again, and re-validate until no problems remain.
-"""
-    return str(agent(prompt))
+    pkg = entry.get("package", "unknown")
+    # Replace / with _ to keep full package path in the filename.
+    pkg_safe = pkg.replace("/", "_")
+    recv = entry.get("receiver") or entry.get("interface") or ""
+    func = entry.get("function") or entry.get("method") or "unknown"
+    # Strip pointer prefix (*Type -> Type)
+    recv = recv.lstrip("*")
+    if recv:
+        name = f"{pkg_safe}.{recv}.{func}"
+    else:
+        name = f"{pkg_safe}.{func}"
+    name = name.replace(" ", "_").replace("*", "")
+    return f"{name}.yaml"

@@ -91,13 +91,15 @@ def create_go_doc_tool(cwd: str):
 class SafeFileTools:
     """File operation tools restricted to a base directory."""
     
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str, allowed_filename: str | None = None):
         """Initialize with a base directory for all operations.
         
         Args:
             base_dir: Base directory - all operations are restricted to this directory and subdirectories
+            allowed_filename: If set, write_yaml_file only permits this exact filename.
         """
         self.base_dir = Path(base_dir).resolve()
+        self.allowed_filename = allowed_filename
     
     def _validate_path(self, path: str) -> Path:
         """Validate that a path is within the base directory.
@@ -203,6 +205,10 @@ class SafeFileTools:
             # Check file extension
             if path.suffix not in ['.yaml', '.yml']:
                 return f"Error: Only .yaml and .yml files can be written, got {path.suffix}"
+            
+            # Enforce allowed filename if set
+            if self.allowed_filename and path.name != self.allowed_filename:
+                return f"Error: Only {self.allowed_filename} can be written, got {path.name}"
             
             # Create parent directories if needed
             path.parent.mkdir(parents=True, exist_ok=True)

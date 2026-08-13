@@ -142,23 +142,28 @@ not represented in the summary format.
 
 1. Load the program with `argot_load` (see "Analysis Tools Available" below for all tools).
 2. List matching functions/methods/interface methods with `argot_list_functions`.
-3. Read the function's source with `argot_show_src`/`go doc -src -u` to understand it and identify
-   callees. For any input/output/receiver whose type is named, check its real declaration with
-   `go doc -src -u <TypeName>` rather than inferring fields from how the source accesses them (see
-   "Field-sensitivity" above for why this matters, e.g. for embedded fields).
+3. Read the function's source with `argot_show_src` or `go doc -src -u` to understand it and
+   identify callees.
+   - `argot_show_src` only works for functions in the loaded program. If it fails (e.g. for stdlib
+     functions), use `go doc -src` instead and move on — do not retry argot_show_src with different
+     regex patterns.
+   - Always use fully qualified package paths with `go doc` (e.g. `text/template/parse.Tree.Parse`,
+     not just `Tree.Parse`) to avoid large outputs for unrelated types.
+   - For methods with pointer receivers, use the type name without the star:
+     `go doc -src text/tabwriter.Writer.Write` (not `*Writer.Write`).
+   - For any input/output/receiver whose type is named, check its real declaration with
+     `go doc -src -u <package.TypeName>` rather than inferring fields from how the source accesses
+     them (see "Field-sensitivity" above for why this matters, e.g. for embedded fields).
 4. For each call that receives a potentially-tainted access path, inspect that callee's source the
    same way, and repeat recursively. Stop recursing once you're confident of a callee's behavior from
-   its signature/doc comment alone (e.g. well-known stdlib functions), or once you've already
-   generated a summary for it this session.
+   its signature/doc comment alone (e.g. well-known stdlib functions whose behavior is obvious), or
+   once you've already generated a summary for it this session.
 5. Fall back to `argot_show_ssa`/`argot_function_focus`/`argot_show_ssa_value` only when source alone
    leaves real ambiguity about exactly which field/value a line touches.
 6. If a call's behavior is genuinely unclear after inspection, don't guess -- fall back to the safer,
    sound-but-coarser flow (e.g. treat the whole return value as tainted) rather than omitting it.
 7. Generate the YAML dataflow summary based on your analysis.
-8. Run `check_summary_valid` on it (see "Analysis Tools Available" below) before writing it. This is
-   mandatory. If it reports an error, fix the summary and re-run it before proceeding -- don't write
-   a summary that fails this check.
-9. Write it with `write_yaml_file`, using *exactly* the filename given in the request.
+8. Write it with `write_yaml_file`, using *exactly* the filename given in the request.
 
 ## Examples
 
@@ -227,68 +232,35 @@ output positions, indexed by their position in the return tuple like any other r
 
 ## Analysis Tools Available
 
-Use the following argot analysis tools to understand a function and its callees. Tracing is
-recursive, not a fixed sequence -- expect to revisit these tools for each callee you inspect.
+Use the following tools to understand a function and its callees. Tracing is recursive, not a
+fixed sequence -- expect to revisit these tools for each callee you inspect.
 
 0. **`argot_reload_config`** - Loads (or reloads) a config.
-   - This is useful when a config for Argot is already defined. A config can list specific program targets and dataflow problems.
-   - The config will specify which files contains existing user specified dataflow summaries
-      (in the dataflow-problems > user-specs section, user-specs is a list of files)
-   - If you need to add a new user-specs files in the config, you need to reload the config and the program to update the state of
-     the mcp server.
-
-1. **`argot_load`** - Load the program first (required)
-   - Use the full path to the Go file: `argot_load ["/path/to/file.go"]`
-   - For directories with multiple main functions, load individual files
    - When a config is loaded, `argot_load --target target_name` loads the target specified in the config.
 
+1. **`argot_load`** - Load the program first (required)
+   - When a config is loaded, `argot_load --target target_name` loads the target specified in the config.
+   - Without a config, use the full path to the Go file: `argot_load ["/path/to/file.go"]`
+
 2. **`argot_list_functions`** - List functions matching a regex
-   - Use it to find the information of the function.
-   - The user may have given imprecise package and function name information, this allows you to find the specific function.
-   - You can search for <package_name>.*<function_name>.* or the like (use package to filter down).
-   - If there are multiple choices, you must come back to the user to allow them to make a selection.
-   - If you are summarizing an interface method, you can use the "interface_mode" option to list the implementations of an interface method.
+   - Use it to find the exact function name in the loaded program.
+   - If you are summarizing an interface method, use the "interface_mode" option.
 
-3. **`argot_show_src`** / **`go doc -src -u`** - View the source code (primary tool)
-   - Use function name regex: `argot_show_src <function_name>`, or `go doc -src -u <query>`
-   - Use this for most functions -- source is easier to read than SSA, and calls are
-     syntactically obvious
-   - The `-u` flag of the `go doc` command shows documentation for unexported as well as exported
-      symbols, methods, and fields.
-4. **`argot_show_ssa`** (optional) - View SSA (Static Single Assignment) representation
-   - Use function name regex: `argot_show_ssa <function_name>`
-   - Only needed when source alone leaves ambiguity about exactly which field/value a line touches
+3. **`argot_show_src`** - View the source code of a function in the loaded program
+   - Use function name regex: `argot_show_src <function_name>`
+   - Only works for functions in the loaded program. If it fails, use `go_doc` instead.
 
-5. **`argot_function_focus`** (optional) - Focus on specific function for detailed analysis
-   - Use function name regex: `argot_function_focus <function_name>`
-   - Enables use of value-specific analysis tools
+4. **`go_doc`** - Look up any Go function/method/type signature and source
+   - Always use fully qualified package paths: `text/template/parse.Tree.Parse`
+   - For pointer receivers, omit the star: `text/tabwriter.Writer.Write`
+   - Use `src: true` to include source code.
+   - Works for stdlib and any Go module in the workspace.
 
-6. **`argot_show_ssa_value`** (optional) - Examine specific SSA values (requires focused function)
-   - Use SSA variable names from the SSA output (e.g., `t7`, `input`)
-   - Shows type information, instruction details, and referrers
-   - Helps trace how values flow through the function
+5. **`argot_show_ssa`** (optional) - View SSA representation
+   - Only needed when source alone leaves ambiguity about which field/value a line touches.
 
-7. **`check_summary_valid`** - Checks a generated summary for well-formedness problems detectable
-   from its syntax alone, without loading the program. Pass either `path` (a file on disk) or
-   `content` (the YAML/JSON text directly). This catches two kinds of mistakes: (1) a malformed
-   `from`/`to` string that doesn't parse at all, e.g. a bare name like `e` instead of `!arg 0`, or
-   `!receiver.Foo` instead of `(!receiver).Foo` -- these are rejected as parse errors before the
-   summary is even checked further; and (2) self-flows, or a summary that is vacuous once self-flows
-   are removed. Running this is a mandatory step (see "Workflow" above), not just a suggestion. It
-   cannot tell you whether a field name is real, whether a position is actually an interface, or
-   whether a claimed flow actually occurs -- it has no access to the real program, so it does not
-   replace inspecting the source.
+6. **`argot_function_focus`** (optional) - Focus on specific function for detailed analysis
+   - Enables use of `argot_show_ssa_value` and `argot_show_ssa_instr`.
 
-## Required Arguments
-
-To generate a dataflow summary, you need:
-
-1. **File path** - A path to the main files of the program using the function. This is the path for the program to load, no the function to analyze.
-2. **Function name** - Name of the function to analyze
-3. **Package name** - Package containing the function
-
-## Example Request
-
-"Generate a dataflow summary for function `thisFunctionIsCalled` in file `/path/to/sample.go` in package `main`."
-
-Generate only the YAML dataflow summary for the provided function. Do not include explanations unless the flow is complex and needs clarification.
+7. **`write_yaml_file`** - Write the summary YAML file
+   - Use exactly the filename given in the request.

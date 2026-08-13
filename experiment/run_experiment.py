@@ -309,7 +309,7 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     llm_dir = run.llm_dir(args.repo)
     llm_dir.mkdir(parents=True, exist_ok=True)
     summaries_path = llm_dir / "summaries.yaml"
-    config_path = run.config_dir(args.repo) / "check-llm.yaml"
+    config_path = run.config_dir(args.repo) / "taint-baseline.yaml"
     config = yaml.safe_load(config_path.read_text())
     target_name = args.target or (config.get("targets") or [{}])[0].get("name")
     if not target_name:
@@ -323,19 +323,20 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     all_functions = json.loads(functions_path.read_text())
 
     if args.fresh:
-        for stale in llm_dir.glob("summaries-*.yaml"):
-            stale.unlink()
+        for f in llm_dir.glob("*.yaml"):
+            if f.name != "summaries.yaml":
+                f.unlink()
+
+    # Determine which entries still need summarization by checking for their output files.
+    remaining = [
+        entry for entry in all_functions
+        if not (llm_dir / _summary_entry_filename(entry)).exists()
+    ]
 
     out = run.result_path(args.repo, "run-llm-summarization-results")
     log_file = out.with_suffix(".log")
-    total_duration = 0.0
-    max_attempts = 10
 
-    for attempt in range(1, max_attempts + 1):
-        num_done = len(list(llm_dir.glob("summaries-*.yaml")))
-        remaining = all_functions[num_done:]
-        if not remaining:
-            break
+    if remaining:
         remaining_path = llm_dir / "to_summarize.remaining.json"
         remaining_path.write_text(json.dumps(remaining, indent=2))
 
@@ -349,50 +350,53 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
             str(remaining_path.resolve()),
             "--out-dir",
             str(llm_dir.resolve()),
-            "--stats-json",
-            str(llm_dir / "summarize-stats.json"),
             "--model",
             args.model,
-            "--batch-size",
-            "1",
         ]
         if args.inference_profile:
             cmd += ["--inference-profile", args.inference_profile]
-        try:
-            total_duration += _run_subprocess(
-                cmd,
-                cwd=llm_dir,
-                log_file=log_file,
-                label=f"run-llm-summarization ({args.repo}), attempt {attempt}/{max_attempts}",
-                timeout=None,
-            )
-            remaining_path.unlink(missing_ok=True)
-        except subprocess.CalledProcessError:
-            remaining_path.unlink(missing_ok=True)
-            if attempt == max_attempts:
-                raise
-            wait = min(2**attempt, 60)
-            console.print(
-                f"[yellow]Attempt {attempt}/{max_attempts} failed, retrying in {wait}s[/yellow]"
-            )
-            time.sleep(wait)
+        total_duration = _run_subprocess(
+            cmd,
+            cwd=llm_dir,
+            log_file=log_file,
+            label=f"run-llm-summarization ({args.repo})",
+            timeout=None,
+        )
+        remaining_path.unlink(missing_ok=True)
+    else:
+        total_duration = 0.0
+        console.print(f"[dim]All entries already summarized for {args.repo}[/dim]")
 
-    # Consolidate batch files into one summaries.yaml
+    # Recompute what's still missing after the run.
+    remaining = [
+        entry for entry in all_functions
+        if not (llm_dir / _summary_entry_filename(entry)).exists()
+    ]
+
+    # Consolidate all per-entry YAML files into one summaries.yaml
     combined: List[Any] = []
-    for batch in sorted(llm_dir.glob("summaries-*.yaml")):
-        data = yaml.safe_load(batch.read_text()) or {}
+    for entry in all_functions:
+        entry_file = llm_dir / _summary_entry_filename(entry)
+        if not entry_file.exists():
+            continue
+        data = yaml.safe_load(entry_file.read_text()) or {}
         combined.extend(data.get("dataflow-summaries") or [])
     summaries_path.write_text(yaml.safe_dump({"dataflow-summaries": combined}))
 
-    stats_path = llm_dir / "summarize-stats.json"
     result = {
         "repo": args.repo,
         "duration_seconds": round(total_duration, 2),
-        "stats": json.loads(stats_path.read_text()) if stats_path.exists() else None,
         "summaries_path": str(summaries_path),
+        "missing": [_summary_entry_filename(e) for e in remaining],
     }
     out.write_text(json.dumps(result, indent=2))
-    console.print(f"[green]Wrote {out}[/green] ({total_duration:.1f}s)")
+    if remaining:
+        missing_names = [_summary_entry_filename(e) for e in remaining]
+        console.print(f"[yellow]Wrote {out} ({total_duration:.1f}s) — missing:[/yellow]")
+        for name in missing_names:
+            console.print(f"[yellow]  {name}[/yellow]")
+    else:
+        console.print(f"[green]Wrote {out}[/green] ({total_duration:.1f}s)")
 
 
 def cmd_run_taint(args: argparse.Namespace) -> None:
@@ -746,6 +750,21 @@ def _ground_truth_files(repo: str) -> List[Path]:
     return sorted((GROUND_TRUTH_DIR / repo).glob("*.yaml"))
 
 
+def _summary_entry_filename(entry: Dict[str, Any]) -> str:
+    """Derive a stable, filesystem-safe YAML filename from a summary entry."""
+    pkg = entry.get("package", "unknown")
+    # Replace / with _ to keep full package path in the filename.
+    pkg_safe = pkg.replace("/", "_")
+    recv = entry.get("receiver") or entry.get("interface") or ""
+    func = entry.get("function") or entry.get("method") or "unknown"
+    recv = recv.lstrip("*")
+    if recv:
+        name = f"{pkg_safe}.{recv}.{func}"
+    else:
+        name = f"{pkg_safe}.{func}"
+    return f"{name.replace(' ', '_').replace('*', '')}.yaml"
+
+
 def _repo_dir(repo: str) -> Path:
     d = REPOS_BASE_DIR / repo
     if not d.exists():
@@ -826,12 +845,7 @@ def _run_subprocess(
         duration = time.time() - start
 
     if proc.returncode != 0 and proc.returncode not in tolerate_exit_codes:
-        tail = log_file.read_text().splitlines()[-20:]
-        console.print(
-            f"[red]{label} failed (exit {proc.returncode}):\n"
-            + "\n".join(tail)
-            + "[/red]"
-        )
+        console.print(f"[red]{label} failed (exit {proc.returncode}); see {log_file}[/red]")
         raise subprocess.CalledProcessError(proc.returncode, cmd)
     console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")
     return duration

@@ -1,108 +1,55 @@
 #!/usr/bin/env python3
-"""CLI for generating dataflow summaries."""
+"""Generate dataflow summaries using Strands Agents and Argot MCP.
+
+Each summary entry (function or interface method) is processed by its own independent agent
+with its own MCP server, running concurrently via asyncio for throughput. Each entry produces
+a named YAML file (e.g. fmt.Printf.yaml) so missing/failed entries are immediately visible.
+"""
+
+from __future__ import annotations
 
 import argparse
+import asyncio
 import json
-import sys
-from typing import List, Any
-import os
 import logging
-import yaml
+import os
+import shutil
+import sys
 from pathlib import Path
+from typing import Any
+
+import yaml
+from strands import Agent
 
 from summary_generator.agent import (
     create_summary_agent,
-    generate_summaries,
+    entry_filename,
+    format_spec_iterm,
     WORKFLOW_PROMPT,
 )
-from summary_generator.stats import compute_statistics, print_statistics
-from strands import Agent
-from strands.hooks import BeforeToolCallEvent, HookProvider, HookRegistry
-from strands_tools import editor
 
-
-os.environ["BYPASS_TOOL_CONSENT"] = "true"
-
-
-class YAMLOnlyEditorHook(HookProvider):
-    """Hook to restrict the editor tool to YAML files within a base directory.
-
-    Without this, the editor tool's own commands have no path restriction at all (view/
-    find_line ignore path and extension entirely; write commands only check the .yaml/.yml
-    extension, not the path) -- so an agent could view or, worse, create/str_replace/
-    pattern_replace/insert any YAML file anywhere on disk. This mirrors SafeFileTools'
-    base_dir restriction so the editor tool can't be used to bypass it.
-    """
-
-    def __init__(self, base_dir: str):
-        self.base_dir = Path(base_dir).resolve()
-
-    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
-        registry.add_callback(BeforeToolCallEvent, self.validate_editor_call)
-
-    def validate_editor_call(self, event: BeforeToolCallEvent) -> None:
-        if event.tool_use["name"] != "editor":
-            return
-
-        tool_input = event.tool_use.get("input", {})
-        command = tool_input.get("command")
-        path = tool_input.get("path", "")
-
-        path_obj = Path(path).expanduser()
-        resolved = path_obj if path_obj.is_absolute() else (self.base_dir / path_obj)
-        resolved = resolved.resolve()
-        try:
-            resolved.relative_to(self.base_dir)
-        except ValueError:
-            event.cancel_tool = (
-                f"Editor operations are restricted to {self.base_dir}. "
-                f"Attempted path: {path}"
-            )
-            return
-
-        if command not in ["view", "find_line"]:
-            if path_obj.suffix not in [".yaml", ".yml"]:
-                event.cancel_tool = f"Editor write operations are restricted to YAML files only. Attempted to write: {path}"
+# Bedrock allows higher concurrency, but each agent spawns an argot-mcp-server subprocess
+# that loads the full program into memory. 5 balances throughput against memory pressure.
+DEFAULT_CONCURRENCY = 5
 
 
 def load_functions_list(path: str) -> list[dict]:
     """Load function list from JSON or YAML file."""
     file_path = Path(path)
-    with open(file_path) as f:
-        if file_path.suffix in [".yaml", ".yml"]:
-            return yaml.safe_load(f)
-        else:
-            return json.load(f)
+    content = file_path.read_text()
+    if file_path.suffix in (".yaml", ".yml"):
+        return yaml.safe_load(content) or []
+    return json.loads(content)
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Generate dataflow summaries using Strands Agents and Argot MCP",
-        epilog="""
-Available Bedrock models (as of July 2026):
-  - anthropic.claude-sonnet-5 (recommended, default)
-  - anthropic.claude-opus-5 (most capable)
-  - anthropic.claude-haiku-4-5-20251001-v1:0 (fastest)
-
-Note: Claude 4+ models use inference profiles automatically for better availability.
-
-For other providers, use their model IDs:
-  - Anthropic API: claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5
-  - Ollama: llama3, mistral, etc.
-  - OpenAI: gpt-4, gpt-4-turbo, etc.
-        """,
     )
     parser.add_argument(
         "--argot-mcp",
-        required=False,
-        # By default, argot users will have it on the path
         default="argot-mcp-server",
         help="Path to argot-mcp-server binary",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        help="Process functions in batches of this size (default: all at once)",
     )
     parser.add_argument(
         "--config",
@@ -118,8 +65,7 @@ For other providers, use their model IDs:
     parser.add_argument(
         "--out-dir",
         required=True,
-        help="Directory the agent may write summaries.yaml (and other .yaml/.yml files) to "
-        "-- SafeFileTools/the editor tool restrict all agent file writes to this directory.",
+        help="Directory for agent-written summary YAML files",
     )
     parser.add_argument(
         "--inference-profile",
@@ -135,7 +81,6 @@ For other providers, use their model IDs:
         default="anthropic.claude-sonnet-5",
         help="Model ID (default: Claude Sonnet 5 for Bedrock)",
     )
-    parser.add_argument("--output", "-o", help="Output file (default: stdout)")
     parser.add_argument(
         "--provider",
         default="bedrock",
@@ -146,45 +91,25 @@ For other providers, use their model IDs:
         "--region", default="us-east-1", help="AWS region (for Bedrock)"
     )
     parser.add_argument(
-        "--stats-json", help="Output file for statistics in JSON format"
+        "--stats-json", help="Output file for aggregate statistics in JSON format"
     )
     parser.add_argument(
-        "--target",
-        default="main",
-        help="Target name in config to analyze (default: main)",
+        "--target", default="main", help="Target name in config to analyze"
     )
-
     args = parser.parse_args()
 
-    # Check if argot-mcp-server exists
-    import shutil
-
+    # Validate argot-mcp-server
     argot_mcp_path = args.argot_mcp
-
-    # Check if it's an absolute/relative path or just a command name
     if "/" in argot_mcp_path or "\\" in argot_mcp_path:
-        # User specified a path
         if not Path(argot_mcp_path).exists():
             print(
-                f"Error: argot-mcp-server not found at specified path: {argot_mcp_path}",
+                f"Error: argot-mcp-server not found at: {argot_mcp_path}",
                 file=sys.stderr,
             )
-            print("Please check the path and try again.", file=sys.stderr)
             return 1
     else:
-        # Check if it's on PATH
         if not shutil.which(argot_mcp_path):
             print(f"Error: '{argot_mcp_path}' not found on PATH", file=sys.stderr)
-            print("", file=sys.stderr)
-            print("To fix this:", file=sys.stderr)
-            print(
-                "  1. Run 'make mcp-install' from the repo root to install it, or",
-                file=sys.stderr,
-            )
-            print(
-                "  2. Specify the path with --argot-mcp /path/to/argot-mcp-server",
-                file=sys.stderr,
-            )
             return 1
 
     # Load function list
@@ -194,11 +119,9 @@ For other providers, use their model IDs:
         print(f"Error loading functions list: {e}", file=sys.stderr)
         return 1
 
-    # Get config directory and filenames (use first config file's directory)
+    # Resolve paths
     config_path = Path(args.config[0]).absolute()
     config_dir = config_path.parent
-
-    # mcp_cwd = the config's own project-root, resolved the same way Go resolves it.
     with open(config_path) as f:
         loaded_config = yaml.safe_load(f) or {}
     project_root = (loaded_config.get("options") or {}).get("project-root", "")
@@ -209,18 +132,12 @@ For other providers, use their model IDs:
     else:
         mcp_cwd = (config_dir / project_root).resolve()
 
-    # Config paths relative to mcp_cwd, for the agent's argot_load/argot_reload_config calls.
-    # relpath (not relative_to) since the config may live outside mcp_cwd's tree.
     config_files = [
         os.path.relpath(Path(c).absolute(), start=mcp_cwd) for c in args.config
     ]
-
-    # out_dir: where the agent may write summaries.yaml. Deliberately separate from mcp_cwd
-    # (the real repo checkout, never writable) and config_dir (may be a shared config).
     out_dir = Path(args.out_dir).absolute()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Configure model
     model_config = {
         "provider": args.provider,
         "model_id": args.model,
@@ -228,108 +145,237 @@ For other providers, use their model IDs:
         "inference_profile": args.inference_profile,
     }
 
-    logging.getLogger("strands").setLevel(logging.INFO)
-    log_out = "summary-generator.log"
-    if args.output:
-        log_out = args.output
-    # Add a handler to see the logs
+    # Build system prompt: workflow instructions + dataflow format specification.
+    # The format spec is loaded once here rather than fetched as a tool call each time,
+    # so it lives in the system prompt and doesn't balloon conversation history.
+    repo_root = Path(out_dir).resolve()
+    while repo_root != repo_root.parent:
+        if (repo_root / "cmd" / "argot-mcp-server").exists():
+            break
+        repo_root = repo_root.parent
+    prompt_file = repo_root / "cmd" / "argot-mcp-server" / "dataflow-summary-generation-prompt.txt"
+    dataflow_prompt = prompt_file.read_text() if prompt_file.exists() else ""
+    system_prompt = WORKFLOW_PROMPT + "\n\n" + dataflow_prompt
+
+    # Logging — consolidated log file for all agents.
+    log_file = out_dir / "summary-generator.log"
+    logging.getLogger("strands").setLevel(logging.DEBUG)
     logging.basicConfig(
-        filename=log_out,
+        filename=str(log_file),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 
-    # Create model and MCP client
+    # Determine which tools to expose
+    allowed_tools = {
+        "argot_reload_config",
+        "argot_load",
+        "argot_show_state",
+        "argot_show_src",
+        "argot_show_ssa",
+        "argot_list_functions",
+        "argot_show_ssa_value",
+        "argot_show_ssa_instr",
+        "argot_function_focus",
+        "argot_function_unfocus",
+        "check_summary_valid",
+    }
+    if args.mask:
+        for tool_name in args.mask.split(","):
+            allowed_tools.discard(tool_name.strip())
+
+    # Run all entries concurrently
     try:
-        model, mcp_client, file_tools, prompt_tool, go_doc_tool = create_summary_agent(
-            argot_mcp_path, model_config, str(out_dir), mcp_cwd=str(mcp_cwd)
+        # Fail fast if credentials are missing (rather than spawning N agents that all fail).
+        if model_config["provider"] == "bedrock":
+            import boto3
+
+            sts = boto3.client(
+                "sts", region_name=model_config.get("region", "us-east-1")
+            )
+            try:
+                sts.get_caller_identity()
+            except Exception as e:
+                print(f"Error: AWS credentials not available: {e}", file=sys.stderr)
+                return 1
+
+        asyncio.run(
+            run_all(
+                functions=functions,
+                config_files=config_files,
+                target=args.target,
+                out_dir=out_dir,
+                mcp_cwd=str(mcp_cwd),
+                argot_mcp_path=argot_mcp_path,
+                model_config=model_config,
+                allowed_tools=allowed_tools,
+                concurrency=DEFAULT_CONCURRENCY,
+                system_prompt=system_prompt,
+            )
         )
-    except Exception as e:
-        print(f"Error creating agent: {e}", file=sys.stderr)
-        return 1
-
-    # Generate summaries with MCP client context
-    try:
-        with mcp_client:
-            # Create agent with tools inside context manager
-            mcp_tools = mcp_client.list_tools_sync()
-            # Filter to only tools mentioned in the workflow prompt
-            allowed_tools = {
-                "argot_reload_config",
-                "argot_load",
-                "argot_show_state",
-                "argot_show_src",
-                "argot_show_ssa",
-                "argot_list_functions",
-                "argot_show_ssa_value",
-                "argot_show_ssa_instr",
-                "argot_function_focus",
-                "argot_function_unfocus",
-                "check_summary_valid",
-            }
-            if args.mask:
-                for tool_name in args.mask.split(","):
-                    if tool_name.strip() not in allowed_tools:
-                        print(
-                            f"Warning: Unknown tool name '{tool_name.strip()}' in mask, ignoring",
-                            file=sys.stderr,
-                        )
-                    allowed_tools.discard(tool_name.strip())
-            filtered_mcp_tools = [t for t in mcp_tools if t.tool_name in allowed_tools]
-            print(
-                f"Available tools: {[t.tool_name for t in filtered_mcp_tools]}",
-                file=sys.stderr,
-            )
-
-            all_tools = (
-                filtered_mcp_tools
-                + file_tools.get_tools()
-                + [prompt_tool]
-                + [go_doc_tool]
-                + [editor.editor]
-            )
-
-            agent = Agent(
-                model=model,
-                tools=all_tools,
-                system_prompt=WORKFLOW_PROMPT,
-                hooks=[YAMLOnlyEditorHook(str(out_dir))],
-            )
-
-            result = generate_summaries(
-                agent, config_files, args.target, functions, args.batch_size
-            )
-            print(result)
-            stats = compute_statistics(log_out)
-            print_statistics(stats)
-
-            # Write stats to JSON if requested
-            if args.stats_json:
-                import json
-
-                # Convert datetime objects to strings for JSON serialization
-                stats_json = stats.copy()
-                if "session" in stats_json:
-                    stats_json["session"]["start"] = stats_json["session"][
-                        "start"
-                    ].isoformat()
-                    stats_json["session"]["end"] = stats_json["session"][
-                        "end"
-                    ].isoformat()
-                if "tools" in stats_json and "timeline" in stats_json["tools"]:
-                    stats_json["tools"]["timeline"] = [
-                        (ts.isoformat(), tool)
-                        for ts, tool in stats_json["tools"]["timeline"]
-                    ]
-
-                with open(args.stats_json, "w") as f:
-                    json.dump(stats_json, f, indent=2)
-                print(f"Statistics written to {args.stats_json}", file=sys.stderr)
-
     except Exception as e:
         print(f"Error generating summaries: {e}", file=sys.stderr)
         return 1
 
+    # Aggregate statistics from the consolidated log file.
+    if log_file.exists() and log_file.stat().st_size > 0:
+        from summary_generator.stats import compute_statistics, print_statistics
+
+        try:
+            combined_stats = compute_statistics(str(log_file))
+            if combined_stats:
+                print_statistics(combined_stats)
+                if args.stats_json:
+                    stats_out = combined_stats.copy()
+                    if "session" in stats_out:
+                        for k in ("start", "end"):
+                            if k in stats_out["session"] and hasattr(
+                                stats_out["session"][k], "isoformat"
+                            ):
+                                stats_out["session"][k] = stats_out["session"][
+                                    k
+                                ].isoformat()
+                    if "tools" in stats_out and "timeline" in stats_out["tools"]:
+                        stats_out["tools"]["timeline"] = [
+                            (
+                                ts.isoformat() if hasattr(ts, "isoformat") else ts,
+                                tool,
+                            )
+                            for ts, tool in stats_out["tools"]["timeline"]
+                        ]
+                    with open(args.stats_json, "w") as f:
+                        json.dump(stats_out, f, indent=2)
+        except Exception:
+            pass
+
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Async orchestration
+# ---------------------------------------------------------------------------
+
+
+async def run_all(
+    functions: list[dict],
+    config_files: list[str],
+    target: str,
+    out_dir: Path,
+    mcp_cwd: str,
+    argot_mcp_path: str,
+    model_config: dict,
+    allowed_tools: set[str],
+    concurrency: int,
+    system_prompt: str,
+) -> None:
+    """Process all summary entries concurrently, one agent per entry."""
+    sem = asyncio.Semaphore(concurrency)
+    total = len(functions)
+
+    async def worker(index: int, entry: dict) -> None:
+        async with sem:
+            label = format_spec_iterm(entry)
+            out_file = entry_filename(entry)
+            print(
+                f"[{index + 1}/{total}] Starting {label} -> {out_file}", file=sys.stderr
+            )
+            try:
+                await generate_one(
+                    entry=entry,
+                    out_file=out_file,
+                    config_files=config_files,
+                    target=target,
+                    out_dir=out_dir,
+                    mcp_cwd=mcp_cwd,
+                    argot_mcp_path=argot_mcp_path,
+                    model_config=model_config,
+                    allowed_tools=allowed_tools,
+                    system_prompt=system_prompt,
+                )
+                print(f"[{index + 1}/{total}] Done {label}", file=sys.stderr)
+            except Exception as e:
+                print(f"[{index + 1}/{total}] Failed {label}: {e}", file=sys.stderr)
+
+    await asyncio.gather(*(worker(i, entry) for i, entry in enumerate(functions)))
+
+
+async def generate_one(
+    entry: dict,
+    out_file: str,
+    config_files: list[str],
+    target: str,
+    out_dir: Path,
+    mcp_cwd: str,
+    argot_mcp_path: str,
+    model_config: dict,
+    allowed_tools: set[str],
+    system_prompt: str,
+) -> None:
+    """Create an independent agent and generate a summary for one entry."""
+    model, mcp_client, file_tools, _, go_doc_tool = create_summary_agent(
+        argot_mcp_path,
+        model_config,
+        str(out_dir),
+        mcp_cwd=mcp_cwd,
+        allowed_filename=out_file,
+    )
+
+    # Don't expose check_summary_valid to the agent — we call it ourselves after the agent
+    # writes, and feed validation errors back as a follow-up prompt.
+    agent_tools = allowed_tools - {"check_summary_valid"}
+
+    with mcp_client:
+        mcp_tools = mcp_client.list_tools_sync()
+        filtered_mcp_tools = [t for t in mcp_tools if t.tool_name in agent_tools]
+
+        all_tools = filtered_mcp_tools + file_tools.get_tools() + [go_doc_tool]
+
+        agent = Agent(
+            model=model,
+            tools=all_tools,
+            system_prompt=system_prompt,
+        )
+
+        func_list = format_spec_iterm(entry)
+        out_file_abs = str(out_dir / out_file)
+
+        prompt = f"""Generate dataflow summaries for the following Go program:
+
+Config file(s): {", ".join(config_files)}
+Target: {target}
+
+Functions to summarize:
+{func_list}
+
+Follow the workflow:
+0. Load the config using argot_reload_config by passing the config file
+1. Load the program with argot_load using the config file(s) and target (provide the target argument, not paths)
+2. For each function, gather context and generate a summary
+3. Write the summaries to {out_file} with write_yaml_file, using exactly that filename
+   (not a name based on the function/package).
+   Include a YAML comment block at the top of the file (lines starting with #) explaining
+   your reasoning: which flows you found, why you included or excluded each one, and any
+   ambiguities. This comment is for human review and does not affect the parsed output.
+   Then write the dataflow-summaries YAML below the comment.
+"""
+        await agent.invoke_async(prompt)
+
+        # Validate and retry loop: call check_summary_valid ourselves and feed errors back.
+        max_validation_attempts = 3
+        for _ in range(max_validation_attempts):
+            if not Path(out_file_abs).exists():
+                break
+            result = mcp_client.call_tool_sync(
+                tool_use_id="validate",
+                name="check_summary_valid",
+                arguments={"path": out_file_abs},
+            )
+            text = "\n".join(item.get("text", "") for item in result.get("content", []))
+            if "invalid" not in text.lower():
+                break
+            await agent.invoke_async(
+                f"The summaries file {out_file} has validation problems:\n\n{text}\n\n"
+                f"Please fix the issues and rewrite {out_file} with write_yaml_file."
+            )
 
 
 if __name__ == "__main__":
