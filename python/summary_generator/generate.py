@@ -159,7 +159,7 @@ def main() -> int:
 
     # Logging — consolidated log file for all agents.
     log_file = out_dir / "summary-generator.log"
-    logging.getLogger("strands").setLevel(logging.DEBUG)
+    logging.getLogger("strands").setLevel(logging.INFO)
     logging.basicConfig(
         filename=str(log_file),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
