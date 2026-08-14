@@ -236,13 +236,14 @@ func checkSummary(
 			fmt.Errorf("cannot check soundness of %s: it is a closure with free variables, which "+
 				"the checkable summary format cannot express for a top-level target", f)
 	}
-	// The checkable summary format has no syntax for a function-typed input or output, so reject
-	// f if it is higher-order.
+	// The checkable summary format has no syntax for a function-typed input or output, so record
+	// f as higher-order (making the result soundy) but continue checking what we can.
+	var higherOrderVals []HigherOrderVal
 	if len(callStack) == 1 {
-		if path, ok := higherOrderInputOrOutput(f); ok {
-			return SoundnessResult{Soundness: Error},
-				fmt.Errorf("cannot check soundness of %s: it is higher-order (%s resolves to a "+
-					"function type), which the checkable summary format cannot express", f, path)
+		higherOrderVals = higherOrderInputsAndOutputs(f)
+		for _, v := range higherOrderVals {
+			s.Logger.Infof("function %s is higher-order (%s has type %s); "+
+				"result will be soundy\n", f, v.Path, v.Type)
 		}
 	}
 
@@ -262,6 +263,7 @@ func checkSummary(
 			return SoundnessResult{Soundness: Error}, err
 		}
 	}
+	unsoundCheckFeats.HigherOrderVals = higherOrderVals
 	s.Logger.Debugf("unsound check features of %s: %+v\n", f, unsoundCheckFeats)
 
 	start := time.Now()
@@ -517,21 +519,75 @@ func isHigherOrderTypeVisiting(t types.Type, seen map[types.Type]bool) bool {
 	return false
 }
 
-// higherOrderInputOrOutput reports the name of the first parameter, receiver, or return value of f
-// whose type is higher-order (see isHigherOrderType), if any.
-func higherOrderInputOrOutput(f *ssa.Function) (string, bool) {
+// findHigherOrderPath finds the access path and type of the first function-typed component
+// reachable from t. prefix is the path so far (e.g. "d" for a param named d).
+// Returns ("", "") if t is not higher-order.
+func findHigherOrderPath(prefix string, t types.Type, seen map[types.Type]bool) (path string, funcType string) {
+	if seen[t] {
+		return "", ""
+	}
+	seen[t] = true
+	switch ty := t.(type) {
+	case *types.Signature:
+		return prefix, t.String()
+	case *types.Pointer:
+		return findHigherOrderPath(prefix, ty.Elem(), seen)
+	case *types.Named:
+		return findHigherOrderPath(prefix, ty.Underlying(), seen)
+	case *types.Alias:
+		return findHigherOrderPath(prefix, ty.Underlying(), seen)
+	case *types.Struct:
+		for i, n := 0, ty.NumFields(); i < n; i++ {
+			field := ty.Field(i)
+			p, ft := findHigherOrderPath(prefix+"."+field.Name(), field.Type(), seen)
+			if p != "" {
+				return p, ft
+			}
+		}
+	case *types.Array:
+		return findHigherOrderPath(prefix, ty.Elem(), seen)
+	case *types.Slice:
+		return findHigherOrderPath(prefix, ty.Elem(), seen)
+	case *types.Map:
+		if p, ft := findHigherOrderPath(prefix, ty.Key(), seen); p != "" {
+			return p, ft
+		}
+		return findHigherOrderPath(prefix, ty.Elem(), seen)
+	case *types.Chan:
+		return findHigherOrderPath(prefix, ty.Elem(), seen)
+	}
+	return "", ""
+}
+
+// HigherOrderVal records a parameter, receiver, or return value whose type transitively contains
+// a function type (making must-not-flow checking incomplete for that position).
+type HigherOrderVal struct {
+	// Path is the access path from the top-level value to the function-typed component,
+	// e.g. "x" (direct), "b.H" (struct field), "return value 0".
+	Path string `json:"Path"`
+	// Type is the Go type that is (or contains) the function, e.g. "func()", "map[int]func()".
+	Type string `json:"Type"`
+}
+
+// higherOrderInputsAndOutputs reports all parameters, receivers, and return values of f whose
+// type is higher-order (see isHigherOrderType).
+func higherOrderInputsAndOutputs(f *ssa.Function) []HigherOrderVal {
+	var vals []HigherOrderVal
 	for _, p := range f.Params {
 		if isHigherOrderType(p.Type()) {
-			return p.Name(), true
+			path, funcType := findHigherOrderPath(p.Name(), p.Type(), make(map[types.Type]bool))
+			vals = append(vals, HigherOrderVal{Path: path, Type: funcType})
 		}
 	}
 	results := f.Signature.Results()
 	for i, n := 0, results.Len(); i < n; i++ {
 		if isHigherOrderType(results.At(i).Type()) {
-			return fmt.Sprintf("return value %d", i), true
+			name := fmt.Sprintf("return value %d", i)
+			path, funcType := findHigherOrderPath(name, results.At(i).Type(), make(map[types.Type]bool))
+			vals = append(vals, HigherOrderVal{Path: path, Type: funcType})
 		}
 	}
-	return "", false
+	return vals
 }
 
 func checkCalleeSummaries(

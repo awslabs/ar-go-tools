@@ -1505,10 +1505,10 @@ func TestCheckSummary_ClosureRejected(t *testing.T) {
 	}
 }
 
-// TestCheckSummary_HigherOrderRejected checks that checkSummary rejects a top-level target that
-// is higher-order: it has a parameter, receiver, or return value whose type resolves to a
-// function, directly or through a struct field, since the checkable summary format has no syntax
-// for function-typed inputs/outputs.
+// TestCheckSummary_HigherOrderRejected checks that checkSummary reports soundy (not sound) for a
+// top-level target that is higher-order: it has a parameter, receiver, or return value whose type
+// resolves to a function, directly or through a struct field, since the checkable summary format
+// has no syntax for function-typed inputs/outputs.
 func TestCheckSummary_HigherOrderRejected(t *testing.T) {
 	dir := filepath.Join("./testdata", "invalid")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
@@ -1530,14 +1530,47 @@ func TestCheckSummary_HigherOrderRejected(t *testing.T) {
 		},
 	}
 
-	for _, name := range []string{
-		"higherOrderDirect", "higherOrderReturn", "higherOrderField", "higherOrderMap",
+	for _, tc := range []struct {
+		name           string
+		summary        summaries.DetailedSummary
+		wantHigherOrder check.HigherOrderVal
+	}{
+		{"higherOrderDirect", summaries.DetailedSummary{
+			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ArgumentSNode{Index: 1}: {summaries.ReturnSNode{Index: 0}},
+			},
+		}, check.HigherOrderVal{Path: "f", Type: "func()"}},
+		{"higherOrderReturn", summaries.DetailedSummary{},
+			check.HigherOrderVal{Path: "return value 0", Type: "func()"}},
+		{"higherOrderField", summaries.DetailedSummary{
+			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ArgumentSNode{Index: 0, ObjectPath: ".V"}: {summaries.ReturnSNode{Index: 0}},
+			},
+		}, check.HigherOrderVal{Path: "b.H", Type: "func()"}},
+		{"higherOrderMap", summaries.DetailedSummary{
+			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ArgumentSNode{Index: 0}: {summaries.ReturnSNode{Index: 0}},
+			},
+		}, check.HigherOrderVal{Path: "m", Type: "func()"}},
 	} {
-		t.Run(name, func(t *testing.T) {
-			summary := summaries.NewFunctionFlowSummary(invalidPkg, name, summaries.DetailedSummary{})
-			_, _, err := check.CheckSummary(context.Background(), state, summary, specs, false)
-			if err == nil {
-				t.Fatalf("expected an error checking higher-order function %s, got nil", name)
+		t.Run(tc.name, func(t *testing.T) {
+			summary := summaries.NewFunctionFlowSummary(invalidPkg, tc.name, tc.summary)
+			results, _, err := check.CheckSummary(context.Background(), state, summary, specs, false)
+			if err != nil {
+				t.Fatalf("unexpected error checking higher-order function %s: %v", tc.name, err)
+			}
+			if len(results) == 0 {
+				t.Fatalf("expected results for higher-order function %s, got none", tc.name)
+			}
+			if results[0].Soundness != check.Soundy {
+				t.Fatalf("expected soundy for higher-order function %s, got %s", tc.name, results[0].Soundness)
+			}
+			hoVals := results[0].Unsoundness.CheckFeatures.HigherOrderVals
+			if len(hoVals) == 0 {
+				t.Fatalf("expected HigherOrderVals for %s, got none", tc.name)
+			}
+			if hoVals[0] != tc.wantHigherOrder {
+				t.Fatalf("HigherOrderVals[0] for %s: got %+v, want %+v", tc.name, hoVals[0], tc.wantHigherOrder)
 			}
 		})
 	}
