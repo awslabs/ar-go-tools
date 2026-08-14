@@ -46,6 +46,13 @@ REPOS = {
 }
 ALL_REPOS = "all"
 
+# Per-repo taint analysis timeout. The intra-function timeout (intra-timeout-ms in the config)
+# handles individual functions; this caps the entire taint run for a repo.
+TAINT_TIMEOUT_SECONDS = 1800  # 30 minutes
+
+# Per-repo timeout for run-check and run-constructive.
+CHECK_TIMEOUT_SECONDS = 1800  # 30 minutes
+
 
 # ---------------------------------------------------------------------------
 # CLI and main
@@ -106,60 +113,17 @@ def main() -> int:
             p.add_argument(arg_name, **kwargs)  # ty: ignore[invalid-argument-type]
         p.set_defaults(func=fn)
 
-    # Eval commands
-    for name, fn, extras in [
-        (
-            "eval-checker-precision",
-            cmd_eval_checker_precision,
-            [
-                ("--check-report", {"required": True, "type": Path}),
-                ("--constructive-report", {"required": True, "type": Path}),
-                ("--summaries", {"type": Path}),
-            ],
-        ),
-        (
-            "eval-checker-efficiency",
-            cmd_eval_checker_efficiency,
-            [
-                ("--check-report", {"required": True, "type": Path}),
-                ("--constructive-report", {"required": True, "type": Path}),
-                ("--summaries", {"type": Path}),
-            ],
-        ),
-        (
-            "eval-checker-ablation",
-            cmd_eval_checker_ablation,
-            [
-                ("--check-report", {"required": True, "type": Path}),
-                ("--summaries", {"type": Path}),
-            ],
-        ),
-        (
-            "eval-llm-effectiveness",
-            cmd_eval_llm_effectiveness,
-            [
-                ("--check-report", {"required": True, "type": Path}),
-                ("--constructive-report", {"required": True, "type": Path}),
-                ("--summaries", {"required": True, "type": Path}),
-            ],
-        ),
-        (
-            "eval-workflow-efficiency",
-            cmd_eval_workflow_efficiency,
-            [
-                ("--summarization", {"required": True, "type": Path}),
-                ("--check-report", {"required": True, "type": Path}),
-                ("--taint-with-summaries", {"required": True, "type": Path}),
-                ("--taint-baseline", {"required": True, "type": Path}),
-                ("--constructive-report", {"required": True, "type": Path}),
-            ],
-        ),
+    # Eval commands — only need --repo and --run-id; input paths are derived from the run.
+    for name, fn in [
+        ("eval-checker-precision", cmd_eval_checker_precision),
+        ("eval-checker-efficiency", cmd_eval_checker_efficiency),
+        ("eval-checker-ablation", cmd_eval_checker_ablation),
+        ("eval-llm-effectiveness", cmd_eval_llm_effectiveness),
+        ("eval-workflow-efficiency", cmd_eval_workflow_efficiency),
     ]:
         p = sub.add_parser(name)
-        p.add_argument("--repo", required=True, choices=repo_choices)
+        p.add_argument("--repo", required=True, choices=repo_choices + [ALL_REPOS])
         p.add_argument("--run-id")
-        for arg_name, kwargs in extras:
-            p.add_argument(arg_name, **kwargs)  # ty: ignore[invalid-argument-type]
         p.set_defaults(func=fn)
 
     args = parser.parse_args()
@@ -168,38 +132,43 @@ def main() -> int:
     args.run = run
     console.print(f"[bold]Run:[/bold] {run_id}  ({run.root})")
 
+    # Build a task name that includes variant (if any) so run.json distinguishes e.g.
+    # run-check --variant llm from run-check --variant ground-truth.
+    variant = getattr(args, "variant", None)
+    task_name = f"{args.command}-{variant}" if variant else args.command
+
     if getattr(args, "repo", None) == ALL_REPOS:
         failed = []
         for repo in sorted(REPOS):
             args.repo = repo
             console.print(f"[bold]=== {args.command} --repo {repo} ===[/bold]")
-            mark_task(run, args.command, repo, "running")
+            mark_task(run, task_name, repo, "running")
             try:
                 args.func(args)
-                mark_task(run, args.command, repo, "complete")
+                mark_task(run, task_name, repo, "complete")
             except SystemExit as e:
                 if e.code not in (0, None):
                     console.print(
                         f"[red]{args.command} --repo {repo} failed (exit {e.code})[/red]"
                     )
-                    mark_task(run, args.command, repo, "failed", error=f"exit {e.code}")
+                    mark_task(run, task_name, repo, "failed", error=f"exit {e.code}")
                     failed.append(repo)
                 else:
-                    mark_task(run, args.command, repo, "complete")
+                    mark_task(run, task_name, repo, "complete")
             except Exception as e:  # noqa: BLE001
                 console.print(f"[red]{args.command} --repo {repo} failed ({e})[/red]")
-                mark_task(run, args.command, repo, "failed", error=str(e))
+                mark_task(run, task_name, repo, "failed", error=str(e))
                 failed.append(repo)
         finalize_run(run, failed=bool(failed))
         return 1 if failed else 0
     else:
         repo = getattr(args, "repo", None) or "all"
-        mark_task(run, args.command, repo, "running")
+        mark_task(run, task_name, repo, "running")
         try:
             args.func(args)
-            mark_task(run, args.command, repo, "complete")
+            mark_task(run, task_name, repo, "complete")
         except SystemExit as e:
-            mark_task(run, args.command, repo, "failed", error=f"exit {e.code}")
+            mark_task(run, task_name, repo, "failed", error=f"exit {e.code}")
             finalize_run(run, failed=True)
             return e.code if isinstance(e.code, int) else 1
         finalize_run(run, failed=False)
@@ -234,6 +203,7 @@ def cmd_run_check(args: argparse.Namespace) -> None:
                 cwd=repo_path,
                 log_file=log_file,
                 label=f"run-check ({args.repo}, {args.variant}, {kind})",
+                timeout=CHECK_TIMEOUT_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             console.print(f"[red]run-check {kind} failed ({e}); null result[/red]")
@@ -245,7 +215,6 @@ def cmd_run_check(args: argparse.Namespace) -> None:
         total_duration += duration
         for target, results in json.loads(report_path.read_text()).items():
             merged[f"{target}:{kind}"] = results
-        log_file.unlink(missing_ok=True)
 
     if not found:
         console.print(
@@ -280,6 +249,7 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
                 cwd=repo_path,
                 log_file=log_file,
                 label=f"run-constructive ({args.repo}, {p.stem})",
+                timeout=CHECK_TIMEOUT_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             console.print(
@@ -295,7 +265,6 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
             existing = merged.get(target)
             merged[target] = (existing or []) + (results or [])
         part_out.unlink(missing_ok=True)
-        log_file.unlink(missing_ok=True)
 
     out.write_text(json.dumps(merged, indent=2))
     console.print(f"[green]Wrote {out}[/green] ({total_duration:.1f}s)")
@@ -408,17 +377,44 @@ def cmd_run_taint(args: argparse.Namespace) -> None:
 
     out = run.result_path(args.repo, f"run-taint-{args.variant}-results")
     log_file = out.with_suffix(".log")
-    duration = _run_subprocess(
-        ["argot", "taint", "-config", str(config_path.resolve())],
-        cwd=repo_path,
-        log_file=log_file,
-        label=f"run-taint ({args.repo}, {args.variant})",
-        tolerate_exit_codes=(2,),
-    )
+    label = f"run-taint ({args.repo}, {args.variant})"
+
+    try:
+        duration = _run_subprocess(
+            ["argot", "taint", "-config", str(config_path.resolve())],
+            cwd=repo_path,
+            log_file=log_file,
+            label=label,
+            timeout=TAINT_TIMEOUT_SECONDS,
+            tolerate_exit_codes=(2,),
+        )
+    except subprocess.TimeoutExpired:
+        result = {
+            "error": "timeout",
+            "timeout_seconds": TAINT_TIMEOUT_SECONDS,
+            "repo": args.repo,
+            "variant": args.variant,
+        }
+        out.write_text(json.dumps(result, indent=2))
+        console.print(f"[red]{label} timed out after {TAINT_TIMEOUT_SECONDS}s; see {log_file}[/red]")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        is_oom = e.returncode in (137, -9)  # SIGKILL: 128+9 or -9 (Python convention)
+        error_type = "oom" if is_oom else f"exit {e.returncode}"
+        result = {
+            "error": error_type,
+            "returncode": e.returncode,
+            "repo": args.repo,
+            "variant": args.variant,
+        }
+        out.write_text(json.dumps(result, indent=2))
+        console.print(f"[red]{label} failed ({error_type}); see {log_file}[/red]")
+        sys.exit(1)
 
     report = _read_taint_report(log_file, repo_path)
     if report["report_path"] is None:
-        console.print(f"[red]run-taint failed; no report found, see {log_file}[/red]")
+        # Check if OOM killed (exit code 137 = SIGKILL, typically from OOM killer)
+        console.print(f"[red]{label} failed; no report found, see {log_file}[/red]")
         sys.exit(1)
     report["duration_seconds"] = round(duration, 2)
     out.write_text(json.dumps(report, indent=2))
@@ -449,16 +445,31 @@ def cmd_eval_llm_effectiveness(args: argparse.Namespace) -> None:
         needs_constructive=True,
         rq="llm-effectiveness",
         result_name="eval-llm-effectiveness-results",
+        check_report_name="run-check-llm-results",
     )
 
 
 def cmd_eval_workflow_efficiency(args: argparse.Namespace) -> None:
     run: RunPaths = args.run
-    summarization = json.loads(args.summarization.read_text())
-    check = json.loads(args.check_report.read_text())
-    taint_with = json.loads(args.taint_with_summaries.read_text())
-    taint_base = json.loads(args.taint_baseline.read_text())
-    constructive = json.loads(args.constructive_report.read_text())
+    results_dir = run.results / args.repo
+
+    required = [
+        "run-llm-summarization-results.json",
+        "run-check-llm-results.json",
+        "run-taint-llm-results.json",
+        "run-taint-baseline-results.json",
+        "run-constructive-results.json",
+    ]
+    missing = [f for f in required if not (results_dir / f).exists()]
+    if missing:
+        console.print(f"[yellow]Skipping {args.repo}: missing {', '.join(missing)}[/yellow]")
+        return
+
+    summarization = json.loads((results_dir / "run-llm-summarization-results.json").read_text())
+    check = json.loads((results_dir / "run-check-llm-results.json").read_text())
+    taint_with = json.loads((results_dir / "run-taint-llm-results.json").read_text())
+    taint_base = json.loads((results_dir / "run-taint-baseline-results.json").read_text())
+    constructive = json.loads((results_dir / "run-constructive-results.json").read_text())
 
     sum_s = summarization.get("duration_seconds") or 0
     check_s = _check_report_duration(check)
@@ -500,9 +511,24 @@ def _run_eval_checker(
     needs_constructive: bool,
     rq: Optional[str] = None,
     result_name: Optional[str] = None,
+    check_report_name: str = "run-check-ground-truth-results",
 ) -> None:
     run: RunPaths = args.run
-    summaries = [args.summaries] if args.summaries else _ground_truth_files(args.repo)
+    results_dir = run.results / args.repo
+    check_report = results_dir / f"{check_report_name}.json"
+    constructive_report = results_dir / "run-constructive-results.json"
+
+    # Check required inputs exist before invoking.
+    missing = []
+    if not check_report.exists():
+        missing.append(check_report.name)
+    if needs_constructive and not constructive_report.exists():
+        missing.append(constructive_report.name)
+    if missing:
+        console.print(f"[yellow]Skipping {args.repo}: missing {', '.join(missing)}[/yellow]")
+        return
+
+    summaries = _ground_truth_files(args.repo)
     out = run.result_path(
         args.repo, result_name or f"eval-checker-{subcommand}-results"
     )
@@ -516,16 +542,16 @@ def _run_eval_checker(
         "-repo",
         args.repo,
         "-check-report",
-        str(args.check_report),
+        str(check_report),
         "-out",
         str(out),
     ]
     for p in summaries:
         cmd += ["-summaries", str(p)]
     if needs_constructive:
-        cmd += ["-constructive-report", str(args.constructive_report)]
+        cmd += ["-constructive-report", str(constructive_report)]
 
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=EXPERIMENT_DIR.parent)
     if r.stdout:
         console.print(r.stdout, end="")
     if r.returncode != 0:
