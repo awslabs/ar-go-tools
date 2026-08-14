@@ -103,7 +103,7 @@ def fetch_run(ssm, s3, instance_id: str, run_id: str) -> Path:
         [
             "set -e",
             f"cd {REMOTE_REPO_DIR}/experiment",
-            f"tar czf /tmp/{key} runs/{run_id}/",
+            f"tar czf /tmp/{key} --exclude='*.log' runs/{run_id}/",
             f"curl -sf -X PUT -T /tmp/{key} '{upload_url}'",
             f"rm -f /tmp/{key}",
         ],
