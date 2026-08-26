@@ -248,6 +248,58 @@ func (f Flow) String() string {
 	return fmt.Sprintf("%s -> %s", f.From, f.To)
 }
 
+// WithoutRedundantFlows normalizes flows so every checker path applies the same definition of
+// summary precision. Mutations are preserved.
+func (s DetailedSummary) WithoutRedundantFlows() DetailedSummary {
+	var flows []Flow
+	for from, tos := range s.Flows {
+		for _, to := range tos {
+			flows = append(flows, Flow{From: from, To: to})
+		}
+	}
+
+	filtered := FilterRedundantFlows(flows)
+	normalized := DetailedSummary{
+		Flows:   make(map[SummaryNode][]SummaryNode),
+		Mutates: append([]SummaryNode(nil), s.Mutates...),
+	}
+	for _, flow := range filtered {
+		normalized.Flows[flow.From] = append(normalized.Flows[flow.From], flow.To)
+	}
+	return normalized
+}
+
+// FilterRedundantFlows removes containment flows before comparing the remaining flows, so a
+// discarded coarse flow cannot suppress a meaningful sibling flow.
+func FilterRedundantFlows(flows []Flow) []Flow {
+	// A discarded containment edge must not make an otherwise meaningful sibling flow disappear.
+	candidates := make([]Flow, 0, len(flows))
+	for _, flow := range flows {
+		if !IsRedundantContainmentFlow(flow.From, flow.To) {
+			candidates = append(candidates, flow)
+		}
+	}
+
+	filtered := make([]Flow, 0, len(candidates))
+	for i, flow := range candidates {
+		redundant := false
+		for j, candidate := range candidates {
+			if i == j || !flowCovers(candidate, flow) {
+				continue
+			}
+			// The second condition keeps the first exact duplicate.
+			if !flowCovers(flow, candidate) || j < i {
+				redundant = true
+				break
+			}
+		}
+		if !redundant {
+			filtered = append(filtered, flow)
+		}
+	}
+	return filtered
+}
+
 // IsMoreGeneralThan returns true if s is a more general summary than other, that is, its set of
 // flow is a superset of the other's flows.
 func (s DetailedSummary) IsMoreGeneralThan(other DetailedSummary) bool {
@@ -275,11 +327,8 @@ func (s DetailedSummary) UncoveredFlows(other DetailedSummary) []Flow {
 // path means "the whole node", which covers every path under it.
 func (s DetailedSummary) coversFlow(input, output SummaryNode) bool {
 	for sInput, sOutputs := range s.Flows {
-		if !nodeCovers(sInput, input) {
-			continue
-		}
 		for _, sOutput := range sOutputs {
-			if nodeCovers(sOutput, output) {
+			if flowCovers(Flow{From: sInput, To: sOutput}, Flow{From: input, To: output}) {
 				return true
 			}
 		}
@@ -287,17 +336,56 @@ func (s DetailedSummary) coversFlow(input, output SummaryNode) bool {
 	return false
 }
 
-// nodeCovers returns true if want and got have the same base node and want's access path is a
-// prefix of (or equal to) got's -- an empty path in want matches any path in got. "[*]" is
-// stripped from both paths before comparing: like in analysis/check's own path handling, it's
-// just an annotation that a node is a slice/array/map (as opposed to a scalar) and carries no
-// extra path semantics -- there's no real difference between a path element "f" and "f[*]".
-func nodeCovers(want, got SummaryNode) bool {
-	if !sameBase(want.WithObjectPath(""), got.WithObjectPath("")) {
+// flowCovers compares both endpoints with the canonical containment rule.
+func flowCovers(want, got Flow) bool {
+	return nodeCovers(want.From, got.From) && nodeCovers(want.To, got.To)
+}
+
+// IsRedundantContainmentFlow reports whether from contains to (including itself). Sibling and
+// field-to-parent flows remain meaningful.
+func IsRedundantContainmentFlow(from, to SummaryNode) bool {
+	if !sameBase(from.WithObjectPath(""), to.WithObjectPath("")) {
 		return false
 	}
-	stripVectorMarker := func(p string) string { return strings.ReplaceAll(p, "[*]", "") }
-	return strings.HasPrefix(stripVectorMarker(got.Path()), stripVectorMarker(want.Path()))
+	return objectPathSubsumes(from.Path(), to.Path())
+}
+
+// nodeCovers returns true if want and got have the same base node and want's access path covers
+// got's access path. It deliberately shares the canonical containment semantics used to identify
+// redundant flows, so field-sensitive summary comparison and redundant-flow filtering agree.
+func nodeCovers(want, got SummaryNode) bool {
+	return IsRedundantContainmentFlow(want, got)
+}
+
+// objectPathSubsumes compares segments to avoid false matches such as .Body and .BodyLength.
+func objectPathSubsumes(parent, child string) bool {
+	parentSegments := objectPathSegments(parent)
+	childSegments := objectPathSegments(child)
+	if len(parentSegments) > len(childSegments) {
+		return false
+	}
+	for i := range parentSegments {
+		if parentSegments[i] != childSegments[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func objectPathSegments(path string) []string {
+	trimmed := strings.TrimPrefix(path, ".")
+	if trimmed == "" {
+		return nil
+	}
+	rawSegments := strings.Split(trimmed, ".")
+	segments := make([]string, 0, len(rawSegments))
+	for _, segment := range rawSegments {
+		segment = strings.ReplaceAll(segment, "[*]", "")
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	return segments
 }
 
 // sameBase returns true if a and b refer to the same base node (ignoring object path). This is

@@ -25,50 +25,26 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
-// ValidateSummary checks want for well-formedness problems that are detectable from its syntax
-// alone, without loading or resolving it against any program. This lets callers (e.g. an LLM
-// summary generator) reject a malformed summary immediately, instead of only discovering the
-// problem indirectly once CheckSummary tries to resolve it against a live SummaryGraph.
-//
-// Currently checks that every summary has at least one flow that is not a self-flow (same base
-// node and the same access path, e.g. "(!receiver).Foo" -> "(!receiver).Foo"). Self-flows carry
-// no information -- they are always dropped by summaryFlows' own redundant-flow filtering -- so
-// a summary made up entirely of them (e.g. one self-flow declared per struct field, in place of
-// the real cross-field flows) is vacuous. A self-flow mixed in with genuine flows is not an
-// error here: it is silently filtered out later by summaryFlows, same as any other redundant
-// flow.
+// ValidateSummary rejects summaries that become empty after redundant-flow normalization.
 func ValidateSummary(want summaries.DetailedSummary) error {
 	if len(want.Flows) == 0 {
 		return nil
 	}
 	for from, tos := range want.Flows {
 		for _, to := range tos {
-			if !isSyntacticSelfFlow(from, to) {
+			if !isSyntacticRedundantContainmentFlow(from, to) {
 				return nil
 			}
 		}
 	}
 	return fmt.Errorf(
-		"summary contains only self-flows (e.g. %s): once redundant flows are filtered out, "+
+		"summary contains only redundant containment flows (e.g. %s): once redundant flows are filtered out, "+
 			"this summary carries no information", firstFlowDesc(want))
 }
 
-// isSyntacticSelfFlow returns true if from and to denote the exact same memory location, based
-// only on their syntactic SummaryNode representation: same base node (ignoring object path) and
-// the same access path. This mirrors summaryFlows' own self-flow test (same dataflow.GraphNode
-// and path both covering each other, i.e. equal paths), but without needing a resolved graph
-// node -- only the SummaryNode itself. A flow from a coarser node to one of its own fields (e.g.
-// "!receiver" -> "(!receiver).Foo") is deliberately NOT a self-flow: it is a real, meaningful
-// flow, not a redundant one.
-// needing a resolved graph node -- only the SummaryNode itself.
-func isSyntacticSelfFlow(from, to summaries.SummaryNode) bool {
-	if from.WithObjectPath("") != to.WithObjectPath("") {
-		return false
-	}
-	stripVectorMarker := func(p string) string { return strings.ReplaceAll(p, "[*]", "") }
-	fromPath := newPath(stripVectorMarker(from.Path()), maxPathLen)
-	toPath := newPath(stripVectorMarker(to.Path()), maxPathLen)
-	return fromPath.subsumes(toPath) && toPath.subsumes(fromPath)
+// isSyntacticRedundantContainmentFlow validates summary syntax without graph resolution.
+func isSyntacticRedundantContainmentFlow(from, to summaries.SummaryNode) bool {
+	return summaries.IsRedundantContainmentFlow(from, to)
 }
 
 // firstFlowDesc returns a deterministic description of one flow in want, for use in an error
@@ -198,7 +174,6 @@ func filterFlowsTypes(flows []flow) ([]flow, error) {
 // of memory.
 func mostGeneralFlows(g *dataflow.SummaryGraph, bounds nodeBounds) ([]flow, error) {
 	var flows []flow
-	seen := make(map[flow]struct{})
 	var inputs []summaryNode
 	var outputs []summaryNode
 	for _, param := range g.Params {
@@ -218,28 +193,14 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, bounds nodeBounds) ([]flow, erro
 	}
 	for _, input := range inputs {
 		for _, output := range outputs {
-			// If the input is not field-sensitive (path len of 0) and the output node is an input
-			// node, then do not enumerate the paths of its outputs, even if the outputs are
-			// supposed to be field-sensitive. This is because a flow from x -> x.f is implicit and
-			// doesn't make sense to include in a summary.
-			if input.node == output.node && input.path.subsumes(output.path) {
-				continue
-			}
-
-			// We don't count self-flows (input flows to same input as an output) because the data
-			// flows to and from the parameter when used as an argument at a callsite are part of
-			// the data flow of the caller's summary, not the callee's.
-			if input == output {
-				continue
-			}
-
-			fl := flow{from: input, to: output}
-			if _, ok := seen[fl]; ok {
-				continue
-			}
-			flows = append(flows, fl)
-			seen[fl] = struct{}{}
+			flows = append(flows, flow{from: input, to: output})
 		}
+	}
+
+	var err error
+	flows, err = withoutRedundantGraphFlows(flows)
+	if err != nil {
+		return nil, err
 	}
 
 	// g.Params, g.FreeVars and g.Returns are maps, so inputs and outputs are enumerated in random
@@ -251,6 +212,41 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, bounds nodeBounds) ([]flow, erro
 	})
 
 	return flows, nil
+}
+
+// withoutRedundantGraphFlows converts to frontend flows so all summary producers share one
+// normalization rule.
+func withoutRedundantGraphFlows(flows []flow) ([]flow, error) {
+	frontendFlows := make([]summaries.Flow, 0, len(flows))
+	for _, graphFlow := range flows {
+		from, fromOK := frontendNode(graphFlow.from)
+		to, toOK := frontendNode(graphFlow.to)
+		if !fromOK || !toOK {
+			return nil, fmt.Errorf("cannot normalize non-frontend flow %v", graphFlow)
+		}
+		frontendFlows = append(frontendFlows, summaries.Flow{From: from, To: to})
+	}
+
+	retained := summaries.FilterRedundantFlows(frontendFlows)
+	used := make([]bool, len(flows))
+	filtered := make([]flow, 0, len(retained))
+	for _, retainedFlow := range retained {
+		found := false
+		for index, frontendFlow := range frontendFlows {
+			if used[index] || frontendFlow.From.String() != retainedFlow.From.String() ||
+				frontendFlow.To.String() != retainedFlow.To.String() {
+				continue
+			}
+			used[index] = true
+			filtered = append(filtered, flows[index])
+			found = true
+			break
+		}
+		if !found {
+			return nil, fmt.Errorf("failed to map normalized flow %v back to its graph flow", retainedFlow)
+		}
+	}
+	return filtered, nil
 }
 
 // enumerateBounded returns node paired with each access path its bound admits.
@@ -337,8 +333,11 @@ func leafPathsUpTo(t types.Type, k int) []path {
 }
 
 func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]flow, error) {
+	// Normalize the frontend representation before resolving it against graph nodes.
+	normalized := summ.WithoutRedundantFlows()
+
 	var flows []flow
-	for input, outputs := range summ.Flows {
+	for input, outputs := range normalized.Flows {
 		in, err := findNode(g, input)
 		if in == nil || err != nil {
 			return nil, fmt.Errorf("could not find node for %v: %v", input, err)
@@ -354,53 +353,7 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 			})
 		}
 	}
-
-	// Filter out redundant flows: e.g., a -> b implies a.f -> b.f.
-	// Also return an error for self flows.
-	var filtered []flow
-	for i, fl1 := range flows {
-		skip := false
-		if fl1.from.node == fl1.to.node &&
-			fl1.from.path.subsumes(fl1.to.path) && fl1.to.path.subsumes(fl1.from.path) {
-			// Same node AND same (or overlapping) access path: this is a true self-flow (e.g.
-			// r.Params -> r.Params), not merely a flow between two different fields of the same
-			// node (e.g. r.Params -> r.Body, which has from.node == to.node but distinct paths
-			// and must not be dropped).
-			s.Logger.Warnf("flow %v is a redundant self-flow\n", fl1)
-			skip = true
-		} else {
-			for j, fl2 := range flows {
-				if i == j {
-					continue
-				}
-				if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
-					if fl2.from.path.subsumes(fl1.from.path) && fl2.to.path.subsumes(fl1.to.path) {
-						// fl2 covers fl1: skip fl1 unless fl1 also covers fl2 (equal), in which
-						// case use the index to break the tie.
-						if !(fl1.from.path.subsumes(fl2.from.path) && fl1.to.path.subsumes(fl2.to.path)) ||
-							j < i {
-
-							s.Logger.Warnf("flow %v is redundant with %v\n", fl1, fl2)
-							skip = true
-							break
-						}
-					}
-				}
-			}
-		}
-		if skip {
-			continue
-		}
-		filtered = append(filtered, fl1)
-	}
-
-	if !slices.Equal(flows, filtered) {
-		s.Logger.Warnf(
-			"removed redundant flows from summary:\n\toriginal: %v\n\tfiltered: %v\n",
-			flows, filtered)
-	}
-
-	return filtered, nil
+	return flows, nil
 }
 
 func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) (dataflow.GraphNode, error) {

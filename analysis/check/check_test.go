@@ -1531,8 +1531,8 @@ func TestCheckSummary_HigherOrderRejected(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name           string
-		summary        summaries.DetailedSummary
+		name            string
+		summary         summaries.DetailedSummary
 		wantHigherOrder check.HigherOrderVal
 	}{
 		{"higherOrderDirect", summaries.DetailedSummary{
@@ -1833,7 +1833,6 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Got: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "s", Index: 0}: {
-							summaries.ArgumentSNode{Name: "s", Index: 0},
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
@@ -1976,12 +1975,10 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Got: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
-							summaries.ArgumentSNode{Name: "x", Index: 0},
 							summaries.ReturnSNode{Index: 0},
 						},
 						summaries.ArgumentSNode{Name: "y", Index: 1}: {
 							summaries.ArgumentSNode{Name: "x", Index: 0},
-							summaries.ArgumentSNode{Name: "y", Index: 1},
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
@@ -1992,22 +1989,6 @@ func TestCheckSummary_Naive(t *testing.T) {
 		},
 		{
 			// wrapper implements greeter; Greet only returns .msg, never .secret.
-			//
-			// NOTE This test previously expected the naive summary to be exactly !receiver -> !ret 0,
-			// and therefore sound. That was an artifact of analyzing dead code: ImplementationsByType
-			// only ever yields the pointer form (*wrapper).Greet, which is Go's auto-generated thunk,
-			// and main assigned a wrapper *value* to the interface -- so nothing ever called the
-			// thunk, the pointer analysis had nothing for it, and the computed summary came out
-			// artificially small. main now assigns a pointer so the checked implementation is live,
-			// which CheckSummary requires (see checkReachable).
-			//
-			// With it live, the most-general summary necessarily includes the receiver as an output:
-			// (*wrapper).Greet's receiver is a pointer, hence pointer-like, hence both an input and
-			// an output. The declared interface summary does not cover those, so naive reports
-			// unsound. That is naive being naive rather than a real flow -- the underlying method has
-			// a value receiver and cannot mutate anything -- but it does mean this case no longer
-			// demonstrates "naive matches the ground truth exactly", and is worth redesigning if that
-			// property still needs coverage.
 			pkg:   pkg,
 			name:  "Greet",
 			iface: "greeter",
@@ -2025,14 +2006,11 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Got: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ReceiverSNode{}: {
-							summaries.ReceiverSNode{},
 							summaries.ReturnSNode{Index: 0},
-							summaries.ReceiverSNode{ObjectPath: ".msg"},
-							summaries.ReceiverSNode{ObjectPath: ".secret"},
 						},
 					},
 				},
-				Soundness: check.Unsound,
+				Soundness: check.Sound,
 				Method:    check.Naive,
 			},
 		},

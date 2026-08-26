@@ -82,7 +82,7 @@ func (c ClosedInterproceduralSummary) ToDetailedSummary() (summaries.DetailedSum
 	return summaries.DetailedSummary{
 		Flows:   flows,
 		Mutates: make([]summaries.SummaryNode, 0),
-	}, nil
+	}.WithoutRedundantFlows(), nil
 }
 
 // ComputeClosedSummary computes the transitively closed summary for function f.

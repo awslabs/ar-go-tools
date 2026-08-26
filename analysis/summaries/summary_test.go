@@ -240,3 +240,92 @@ func TestUncoveredFlows(t *testing.T) {
 		})
 	}
 }
+
+func TestIsRedundantContainmentFlow(t *testing.T) {
+	testCases := []struct {
+		name string
+		from SummaryNode
+		to   SummaryNode
+		want bool
+	}{
+		{
+			name: "exact self flow",
+			from: ReceiverSNode{},
+			to:   ReceiverSNode{},
+			want: true,
+		},
+		{
+			name: "coarse to field containment",
+			from: ReceiverSNode{},
+			to:   ReceiverSNode{ObjectPath: ".Body"},
+			want: true,
+		},
+		{
+			name: "vector marker is cosmetic",
+			from: ArgumentSNode{Index: 0, ObjectPath: "[*]"},
+			to:   ArgumentSNode{Name: "items", Index: 0},
+			want: true,
+		},
+		{
+			name: "sibling fields are meaningful",
+			from: ReceiverSNode{ObjectPath: ".Params"},
+			to:   ReceiverSNode{ObjectPath: ".Body"},
+			want: false,
+		},
+		{
+			name: "field to parent is meaningful",
+			from: ReceiverSNode{ObjectPath: ".Body"},
+			to:   ReceiverSNode{},
+			want: false,
+		},
+		{
+			name: "segment prefix is not string prefix",
+			from: ReceiverSNode{ObjectPath: ".Body"},
+			to:   ReceiverSNode{ObjectPath: ".BodyLength"},
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsRedundantContainmentFlow(tc.from, tc.to); got != tc.want {
+				t.Errorf("IsRedundantContainmentFlow(%s, %s) = %v, want %v", tc.from, tc.to, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWithoutRedundantFlows(t *testing.T) {
+	receiver := ReceiverSNode{}
+	ret := ReturnSNode{Index: 0}
+	left := ReceiverSNode{ObjectPath: ".Left"}
+	right := ReceiverSNode{ObjectPath: ".Right"}
+
+	normalized := DetailedSummary{
+		Flows: map[SummaryNode][]SummaryNode{
+			receiver: {
+				ret,
+				receiver,
+				ReceiverSNode{ObjectPath: ".Body"},
+			},
+			ReceiverSNode{ObjectPath: ".Field"}: {
+				ReturnSNode{Index: 0, ObjectPath: ".Value"},
+			},
+			left: {right, right},
+		},
+		Mutates: []SummaryNode{ReceiverSNode{ObjectPath: ".State"}},
+	}.WithoutRedundantFlows()
+
+	if got := normalized.Flows[receiver]; len(got) != 1 || got[0] != ret {
+		t.Errorf("receiver flows = %v, want only %v", got, ret)
+	}
+	if got := normalized.Flows[left]; len(got) != 1 || got[0] != right {
+		t.Errorf("sibling flows = %v, want only %v", got, right)
+	}
+	if _, ok := normalized.Flows[ReceiverSNode{ObjectPath: ".Field"}]; ok {
+		t.Error("covered field refinement survived normalization")
+	}
+	if len(normalized.Mutates) != 1 || normalized.Mutates[0].String() != "(!receiver).State" {
+		t.Errorf("mutates = %v, want preserved mutation", normalized.Mutates)
+	}
+}

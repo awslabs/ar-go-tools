@@ -288,15 +288,13 @@ func TestValidateSummary(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			// Coarse-to-field is NOT a self-flow by this codebase's existing definition (see
-			// summaryFlows: it requires the paths to cover each other in both directions, i.e.
-			// be equal) -- a flow from the whole receiver to one of its own fields is considered
-			// meaningful, not redundant.
-			name: "coarse-to-field flow is not a self-flow",
+			// A coarse-to-field containment flow is redundant: the whole receiver already
+			// contains .Foo, so a summary consisting only of this edge is vacuous.
+			name: "coarse-to-field containment flow is redundant",
 			summary: summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				summaries.ReceiverSNode{}: {summaries.ReceiverSNode{ObjectPath: ".Foo"}},
 			}},
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 
