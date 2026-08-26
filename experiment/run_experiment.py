@@ -46,8 +46,7 @@ REPOS = {
 }
 ALL_REPOS = "all"
 
-# Per-repo taint analysis timeout. The intra-function timeout (intra-timeout-ms in the config)
-# handles individual functions; this caps the entire taint run for a repo.
+# Per-repo taint analysis timeout.
 TAINT_TIMEOUT_SECONDS = 1800  # 30 minutes
 
 # Per-repo timeout for run-check and run-constructive.
@@ -756,7 +755,6 @@ def _base_config(repo: str) -> Dict[str, Any]:
         "dataflow-problems": {
             "summarize-on-demand": True,
             "check-ignores-unsound": True,
-            "intra-timeout-ms": 60000,
         },
         "options": {
             "project-root": "./",
