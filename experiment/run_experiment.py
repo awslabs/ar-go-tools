@@ -432,7 +432,7 @@ def cmd_run_taint(args: argparse.Namespace) -> None:
 
 
 def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
-    _run_eval_checker("precision", args, needs_constructive=True)
+    _run_eval_checker("precision", args, needs_constructive=False)
 
 
 def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
@@ -445,10 +445,9 @@ def cmd_eval_checker_ablation(args: argparse.Namespace) -> None:
 
 def cmd_eval_llm_effectiveness(args: argparse.Namespace) -> None:
     _run_eval_checker(
-        "precision",
+        "llm-effectiveness",
         args,
         needs_constructive=True,
-        rq="llm-effectiveness",
         result_name="eval-llm-effectiveness-results",
         check_report_name="run-check-llm-results",
     )
@@ -522,7 +521,6 @@ def _run_eval_checker(
     subcommand: str,
     args: argparse.Namespace,
     needs_constructive: bool,
-    rq: Optional[str] = None,
     result_name: Optional[str] = None,
     check_report_name: str = "run-check-ground-truth-results",
 ) -> None:
@@ -572,10 +570,6 @@ def _run_eval_checker(
     if r.returncode != 0:
         console.print(f"[red]eval-checker {subcommand} failed:[/red]\n{r.stderr}")
         sys.exit(1)
-    if rq:
-        data = json.loads(out.read_text())
-        data["rq"] = rq
-        out.write_text(json.dumps(data, indent=2))
 
 
 def _check_report_duration(report: Dict[str, Any]) -> float:

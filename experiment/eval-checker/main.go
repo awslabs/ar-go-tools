@@ -14,22 +14,20 @@
 
 // eval-checker is a standalone tool (part of the ar-go-tools module, so it always builds
 // against the local analysis/summaries package) that turns check-report.json files produced by
-// `argot check` (via run-check/run-constructive in run_experiment.py) into the
-// {rq, repo, targets} JSON schema used by the paper's RQ1/RQ2/RQ3 tables.
+// `argot check` (via run-check/run-constructive in run_experiment.py) into the JSON schemas used
+// by the paper's evaluation questions.
 //
-// It has three subcommands, mirroring run_experiment.py's eval-checker-* commands:
+// Each subcommand has its own result type because the evaluation questions measure distinct
+// properties:
 //
-//	eval-checker precision   --repo R --summaries FILE... --check-report FILE --constructive-report FILE --out FILE
-//	eval-checker efficiency  --repo R --summaries FILE... --check-report FILE --constructive-report FILE --out FILE
-//	eval-checker ablation    --repo R --summaries FILE... --check-report FILE --out FILE
+//	eval-checker precision          --repo R --summaries FILE... --check-report FILE --out FILE
+//	eval-checker efficiency         --repo R --summaries FILE... --check-report FILE --constructive-report FILE --out FILE
+//	eval-checker ablation           --repo R --summaries FILE... --check-report FILE --out FILE
+//	eval-checker llm-effectiveness  --repo R --summaries FILE... --check-report FILE --constructive-report FILE --out FILE
 //
-// Grouping and flow-count logic is intentionally kept here (in Go) rather than in
-// run_experiment.py, so that it can reuse analysis/summaries' ParseSummaryNode/DetailedSummary/
-// UncoveredFlows directly instead of re-implementing summary-node comparison semantics in
-// Python. The "excess flow" concept computed by "precision" is only meaningful because the RQ1
-// ground-truth summaries (--summaries) are known-sound by construction (hand-curated) -- this
-// assumption belongs here, in the experiment-evaluation tool, not in argot check's general
-// -purpose report.
+// Flow comparison stays in Go so it can reuse summaries.DetailedSummary.UncoveredFlows. That
+// comparison accounts for field subsumption and summary-node normalization; duplicating it in
+// Python would risk changing the meaning of excess flows.
 package main
 
 import (
@@ -39,6 +37,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/check"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
@@ -56,6 +55,8 @@ func main() {
 		err = runEfficiency(os.Args[2:])
 	case "ablation":
 		err = runAblation(os.Args[2:])
+	case "llm-effectiveness":
+		err = runLLMEffectiveness(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -67,10 +68,11 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: eval-checker <precision|efficiency|ablation> [flags]")
+	fmt.Fprintln(os.Stderr,
+		"usage: eval-checker <precision|efficiency|ablation|llm-effectiveness> [flags]")
 }
 
-// commonFlags are the flags shared by all three subcommands.
+// commonFlags are the flags shared by all subcommands.
 type commonFlags struct {
 	repo        string
 	summaries   multiFlag
@@ -87,70 +89,137 @@ func (m *multiFlag) Set(v string) error {
 	return nil
 }
 
-func parseCommon(fs *flag.FlagSet, args []string, needConstructive bool) (commonFlags, string, error) {
+func parseCommon(
+	fs *flag.FlagSet,
+	args []string,
+	needConstructive bool,
+) (commonFlags, string, error) {
 	var f commonFlags
 	var constructiveReport string
 	fs.StringVar(&f.repo, "repo", "", "repo name (for the output's \"repo\" field)")
 	fs.Var(&f.summaries, "summaries", "path to a ground-truth summaries YAML file (repeatable)")
 	fs.StringVar(&f.checkReport, "check-report", "", "path to check-report.json")
 	if needConstructive {
-		fs.StringVar(&constructiveReport, "constructive-report", "", "path to constructive check-report.json")
+		fs.StringVar(
+			&constructiveReport,
+			"constructive-report",
+			"",
+			"path to constructive check-report.json",
+		)
 	}
 	fs.StringVar(&f.out, "out", "", "path to write the output JSON to")
 	if err := fs.Parse(args); err != nil {
 		return f, "", err
 	}
 	if f.repo == "" || len(f.summaries) == 0 || f.checkReport == "" || f.out == "" {
-		return f, "", fmt.Errorf("missing required flag(s); need -repo, -summaries, -check-report, -out")
+		return f, "", fmt.Errorf(
+			"missing required flag(s); need -repo, -summaries, -check-report, -out",
+		)
+	}
+	if needConstructive && constructiveReport == "" {
+		return f, "", fmt.Errorf("missing required flag -constructive-report")
 	}
 	return f, constructiveReport, nil
 }
 
-// evalOutput is the {rq, repo, targets} schema shared by all three eval-checker-* commands.
-type evalOutput struct {
-	RQ      string   `json:"rq"`
-	Repo    string   `json:"repo"`
-	Targets []target `json:"targets"`
+// evaluationTarget groups results by the ground-truth summary they evaluate. An interface-method
+// summary may have multiple concrete implementation results; a plain function has at most one.
+type evaluationTarget[T any] struct {
+	SummaryName string `json:"summary_name"`
+	Kind        string `json:"kind"`
+	Results     []T    `json:"results"`
 }
 
-type target struct {
-	SummaryName string   `json:"summary_name"`
-	Kind        string   `json:"kind"`
-	Results     []result `json:"results"`
+// evalCheckerPrecisionResult answers rq:checker-precision: whether the soundness checker
+// classifies a known-sound, most-precise ground-truth model as sound.
+type evalCheckerPrecisionResult struct {
+	Name             string          `json:"name"`
+	CheckerSoundness check.Soundness `json:"checker_soundness"`
 }
 
-// result is a single method/implementation's row. Fields are omitted (via omitempty) rather
-// than zero-valued when not applicable to a given rq, matching run_experiment.py's previous
-// behavior of deleting inapplicable keys.
-type result struct {
-	Name                        string   `json:"name"`
-	CheckerSoundness            string   `json:"checker_soundness,omitempty"`
-	CheckerMethod               string   `json:"checker_method,omitempty"`
-	CheckerSeconds              float64  `json:"checker_seconds,omitempty"`
-	GroundTruthFlowCount        int      `json:"ground_truth_flow_count,omitempty"`
-	ConstructiveFlowCount       *int     `json:"constructive_flow_count,omitempty"`
-	ConstructiveExcessFlowCount *int     `json:"constructive_excess_flow_count,omitempty"`
-	ConstructiveSeconds         *float64 `json:"constructive_seconds,omitempty"`
+type evalCheckerPrecisionOutput struct {
+	RQ      string                                         `json:"rq"`
+	Repo    string                                         `json:"repo"`
+	Targets []evaluationTarget[evalCheckerPrecisionResult] `json:"targets"`
+}
+
+// evalCheckerEfficiencyResult answers rq:checker-efficiency by pairing soundness-checker and
+// constructive-analysis durations for the same concrete function.
+type evalCheckerEfficiencyResult struct {
+	Name                string   `json:"name"`
+	CheckerSeconds      float64  `json:"checker_seconds"`
+	ConstructiveSeconds *float64 `json:"constructive_seconds,omitempty"`
+}
+
+type evalCheckerEfficiencyOutput struct {
+	RQ      string                                          `json:"rq"`
+	Repo    string                                          `json:"repo"`
+	Targets []evaluationTarget[evalCheckerEfficiencyResult] `json:"targets"`
+}
+
+// evalCheckerAblationResult answers rq:checker-ablation by recording which checker method
+// discharged each concrete check.
+type evalCheckerAblationResult struct {
+	Name          string `json:"name"`
+	CheckerMethod string `json:"checker_method"`
+}
+
+type evalCheckerAblationOutput struct {
+	RQ      string                                        `json:"rq"`
+	Repo    string                                        `json:"repo"`
+	Targets []evaluationTarget[evalCheckerAblationResult] `json:"targets"`
+}
+
+// evalLLMEffectivenessResult answers rq:llm-effectiveness for one ground-truth-selected summary.
+// Interface results are collapsed over reachable concrete implementations: CheckerSoundness is
+// sound iff every reachable implementation is sound, and flow counts use unions across those
+// implementations. ExcessFlowCount is present only when every reachable implementation has a
+// proven-sound checker verdict (sound or soundy).
+type evalLLMEffectivenessResult struct {
+	Name                         string          `json:"name"`
+	ReachableImplementationCount int             `json:"reachable_implementation_count"`
+	CheckerSoundness             check.Soundness `json:"checker_soundness"`
+	LLMFlowCount                 int             `json:"llm_flow_count"`
+	ConstructiveFlowCount        *int            `json:"constructive_flow_count,omitempty"`
+	ExcessFlowCount              *int            `json:"excess_flow_count,omitempty"`
+}
+
+type evalLLMEffectivenessOutput struct {
+	RQ      string                                         `json:"rq"`
+	Repo    string                                         `json:"repo"`
+	Targets []evaluationTarget[evalLLMEffectivenessResult] `json:"targets"`
 }
 
 func runPrecision(args []string) error {
 	fs := flag.NewFlagSet("precision", flag.ContinueOnError)
-	f, constructiveReportPath, err := parseCommon(fs, args, true)
+	f, _, err := parseCommon(fs, args, false)
 	if err != nil {
 		return err
 	}
-	targets, err := buildTargets(f.repo, f.summaries, f.checkReport, constructiveReportPath, true)
+	entries, checkBySummary, err := loadEvaluationInputs(f.summaries, f.checkReport)
 	if err != nil {
 		return err
 	}
-	// precision only cares about correctness, not timing.
-	for ti := range targets {
-		for ri := range targets[ti].Results {
-			targets[ti].Results[ri].CheckerSeconds = 0
-			targets[ti].Results[ri].ConstructiveSeconds = nil
+
+	targets := make([]evaluationTarget[evalCheckerPrecisionResult], 0, len(entries))
+	for _, entry := range entries {
+		results := make([]evalCheckerPrecisionResult, 0, len(checkBySummary[entry.Name()]))
+		for _, cr := range checkBySummary[entry.Name()] {
+			results = append(results, evalCheckerPrecisionResult{
+				Name:             cr.Func,
+				CheckerSoundness: cr.Soundness,
+			})
 		}
+		targets = append(targets, evaluationTarget[evalCheckerPrecisionResult]{
+			SummaryName: entry.Name(),
+			Kind:        summaryKind(entry),
+			Results:     results,
+		})
 	}
-	return writeOutput(f.out, evalOutput{RQ: "checker-precision", Repo: f.repo, Targets: targets})
+
+	return writeOutput(f.out, evalCheckerPrecisionOutput{
+		RQ: "checker-precision", Repo: f.repo, Targets: targets,
+	})
 }
 
 func runEfficiency(args []string) error {
@@ -159,21 +228,39 @@ func runEfficiency(args []string) error {
 	if err != nil {
 		return err
 	}
-	targets, err := buildTargets(f.repo, f.summaries, f.checkReport, constructiveReportPath, false)
+	entries, checkBySummary, err := loadEvaluationInputs(f.summaries, f.checkReport)
 	if err != nil {
 		return err
 	}
-	// efficiency only cares about timing: strip the precision-only fields.
-	for ti := range targets {
-		for ri := range targets[ti].Results {
-			targets[ti].Results[ri].CheckerSoundness = ""
-			targets[ti].Results[ri].CheckerMethod = ""
-			targets[ti].Results[ri].GroundTruthFlowCount = 0
-			targets[ti].Results[ri].ConstructiveFlowCount = nil
-			targets[ti].Results[ri].ConstructiveExcessFlowCount = nil
-		}
+	constructiveByFunc, err := loadConstructiveResults(constructiveReportPath)
+	if err != nil {
+		return err
 	}
-	return writeOutput(f.out, evalOutput{RQ: "checker-efficiency", Repo: f.repo, Targets: targets})
+
+	targets := make([]evaluationTarget[evalCheckerEfficiencyResult], 0, len(entries))
+	for _, entry := range entries {
+		results := make([]evalCheckerEfficiencyResult, 0, len(checkBySummary[entry.Name()]))
+		for _, cr := range checkBySummary[entry.Name()] {
+			result := evalCheckerEfficiencyResult{
+				Name:           cr.Func,
+				CheckerSeconds: cr.Elapsed.Seconds(),
+			}
+			if constructive, ok := constructiveByFunc[cr.Func]; ok {
+				seconds := constructive.Elapsed.Seconds()
+				result.ConstructiveSeconds = &seconds
+			}
+			results = append(results, result)
+		}
+		targets = append(targets, evaluationTarget[evalCheckerEfficiencyResult]{
+			SummaryName: entry.Name(),
+			Kind:        summaryKind(entry),
+			Results:     results,
+		})
+	}
+
+	return writeOutput(f.out, evalCheckerEfficiencyOutput{
+		RQ: "checker-efficiency", Repo: f.repo, Targets: targets,
+	})
 }
 
 func runAblation(args []string) error {
@@ -182,18 +269,67 @@ func runAblation(args []string) error {
 	if err != nil {
 		return err
 	}
-	targets, err := buildTargets(f.repo, f.summaries, f.checkReport, "", false)
+	entries, checkBySummary, err := loadEvaluationInputs(f.summaries, f.checkReport)
 	if err != nil {
 		return err
 	}
-	// ablation only cares about name + checker_method.
-	for ti := range targets {
-		for ri := range targets[ti].Results {
-			r := &targets[ti].Results[ri]
-			*r = result{Name: r.Name, CheckerMethod: r.CheckerMethod}
+
+	targets := make([]evaluationTarget[evalCheckerAblationResult], 0, len(entries))
+	for _, entry := range entries {
+		results := make([]evalCheckerAblationResult, 0, len(checkBySummary[entry.Name()]))
+		for _, cr := range checkBySummary[entry.Name()] {
+			results = append(results, evalCheckerAblationResult{
+				Name: cr.Func, CheckerMethod: cr.Method,
+			})
 		}
+		targets = append(targets, evaluationTarget[evalCheckerAblationResult]{
+			SummaryName: entry.Name(),
+			Kind:        summaryKind(entry),
+			Results:     results,
+		})
 	}
-	return writeOutput(f.out, evalOutput{RQ: "checker-ablation", Repo: f.repo, Targets: targets})
+
+	return writeOutput(f.out, evalCheckerAblationOutput{
+		RQ: "checker-ablation", Repo: f.repo, Targets: targets,
+	})
+}
+
+func runLLMEffectiveness(args []string) error {
+	fs := flag.NewFlagSet("llm-effectiveness", flag.ContinueOnError)
+	f, constructiveReportPath, err := parseCommon(fs, args, true)
+	if err != nil {
+		return err
+	}
+	entries, checkBySummary, err := loadEvaluationInputs(f.summaries, f.checkReport)
+	if err != nil {
+		return err
+	}
+	constructiveByFunc, err := loadConstructiveResults(constructiveReportPath)
+	if err != nil {
+		return err
+	}
+
+	targets := make([]evaluationTarget[evalLLMEffectivenessResult], 0, len(entries))
+	for _, entry := range entries {
+		checkResults := checkBySummary[entry.Name()]
+		results := []evalLLMEffectivenessResult{}
+		if len(checkResults) > 0 {
+			result, err := buildLLMEffectivenessResult(entry.Name(), checkResults, constructiveByFunc)
+			if err != nil {
+				return err
+			}
+			results = append(results, result)
+		}
+		targets = append(targets, evaluationTarget[evalLLMEffectivenessResult]{
+			SummaryName: entry.Name(),
+			Kind:        summaryKind(entry),
+			Results:     results,
+		})
+	}
+
+	return writeOutput(f.out, evalLLMEffectivenessOutput{
+		RQ: "llm-effectiveness", Repo: f.repo, Targets: targets,
+	})
 }
 
 // rawCheckResult mirrors analysis/check's rawSoundnessResult JSON shape (the relevant subset of
@@ -203,7 +339,7 @@ type rawCheckResult struct {
 	SummaryName string
 	Want        map[string][]string
 	Got         map[string][]string
-	Soundness   string
+	Soundness   check.Soundness
 	Method      string
 	Elapsed     time.Duration
 }
@@ -233,134 +369,194 @@ func loadCheckReport(path string) (map[string][]rawCheckResult, []string, error)
 	return report, nullTargets, nil
 }
 
-// groupBySummaryName groups a check-report.json's flat per-target result lists by SummaryName
-// (the top-level summary entry each result was checked against). For an interface method, every
-// concrete implementation's result shares the same SummaryName (the interface method's own
-// name); for a plain function, SummaryName equals Func.
+func loadEvaluationInputs(
+	summaryPaths []string,
+	checkReportPath string,
+) ([]summaries.FrontendDataflowSummary, map[string][]rawCheckResult, error) {
+	var entries []summaries.FrontendDataflowSummary
+	for _, path := range summaryPaths {
+		parsed, err := summaries.ParseSummariesFile(path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+		entries = append(entries, parsed...)
+	}
+
+	report, nullTargets, err := loadCheckReport(checkReportPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	warnNullTargets(nullTargets, "check")
+	return entries, groupBySummaryName(report), nil
+}
+
+func loadConstructiveResults(path string) (map[string]rawCheckResult, error) {
+	report, nullTargets, err := loadCheckReport(path)
+	if err != nil {
+		return nil, err
+	}
+	warnNullTargets(nullTargets, "constructive")
+	return groupByFunc(report), nil
+}
+
+func warnNullTargets(targets []string, reportKind string) {
+	for _, name := range targets {
+		fmt.Fprintf(
+			os.Stderr,
+			"warning: target %q has no results in the %s report; see the .log file\n",
+			name,
+			reportKind,
+		)
+	}
+}
+
+// groupBySummaryName groups a check-report.json's flat per-target result lists by SummaryName.
+// For an interface method, every reachable concrete implementation shares the interface method's
+// SummaryName; for a plain function, SummaryName equals Func.
 func groupBySummaryName(report map[string][]rawCheckResult) map[string][]rawCheckResult {
 	grouped := make(map[string][]rawCheckResult)
 	for _, results := range report {
-		for _, r := range results {
-			grouped[r.SummaryName] = append(grouped[r.SummaryName], r)
+		for _, result := range results {
+			grouped[result.SummaryName] = append(grouped[result.SummaryName], result)
 		}
 	}
 	return grouped
 }
 
 // groupByFunc indexes a check-report.json's flat per-target result lists by Func, keeping only
-// the first result per function (matching run_experiment.py's constructive_matches[0]
-// behavior: each function is only checked once per run-constructive invocation).
+// the first result per function. A function is checked once per run-constructive invocation.
 func groupByFunc(report map[string][]rawCheckResult) map[string]rawCheckResult {
 	byFunc := make(map[string]rawCheckResult)
 	for _, results := range report {
-		for _, r := range results {
-			if _, ok := byFunc[r.Func]; !ok {
-				byFunc[r.Func] = r
+		for _, result := range results {
+			if _, exists := byFunc[result.Func]; !exists {
+				byFunc[result.Func] = result
 			}
 		}
 	}
 	return byFunc
 }
 
-func buildTargets(
-	repo string,
-	summariesPaths []string,
-	checkReportPath string,
-	constructiveReportPath string,
-	computeExcessFlows bool,
-) ([]target, error) {
-	var entries []summaries.FrontendDataflowSummary
-	for _, p := range summariesPaths {
-		es, err := summaries.ParseSummariesFile(p)
-		if err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", p, err)
-		}
-		entries = append(entries, es...)
+func summaryKind(entry summaries.FrontendDataflowSummary) string {
+	if _, ok := entry.(summaries.IfaceMethodFlowSummary); ok {
+		return "interface"
 	}
-
-	checkReport, nullTargets, err := loadCheckReport(checkReportPath)
-	if err != nil {
-		return nil, err
-	}
-	for _, name := range nullTargets {
-		fmt.Fprintf(os.Stderr,
-			"warning: target %q has no results in the check report "+
-				"(argot check likely failed to build it); see the .log file\n", name)
-	}
-	checkBySummary := groupBySummaryName(checkReport)
-
-	var constructiveByFunc map[string]rawCheckResult
-	if constructiveReportPath != "" {
-		constructiveReport, nullConstructiveTargets, err := loadCheckReport(constructiveReportPath)
-		if err != nil {
-			return nil, err
-		}
-		for _, name := range nullConstructiveTargets {
-			fmt.Fprintf(os.Stderr,
-				"warning: target %q has no results in the constructive report; "+
-					"see the .log file\n", name)
-		}
-		constructiveByFunc = groupByFunc(constructiveReport)
-	}
-
-	targets := []target{}
-	for _, entry := range entries {
-		kind := "function"
-		if _, ok := entry.(summaries.IfaceMethodFlowSummary); ok {
-			kind = "interface"
-		}
-		name := entry.Name()
-
-		results := []result{}
-		for _, cr := range checkBySummary[name] {
-			results = append(results, mergeResult(cr, constructiveByFunc, computeExcessFlows))
-		}
-
-		targets = append(targets, target{SummaryName: name, Kind: kind, Results: results})
-	}
-	return targets, nil
+	return "function"
 }
 
-func mergeResult(
-	cr rawCheckResult, constructiveByFunc map[string]rawCheckResult, computeExcessFlows bool,
-) result {
-	want, err := toDetailedSummary(cr.Want)
-	if err != nil {
-		// Should not happen: cr.Want was produced by argot check's own serializer. Fall back
-		// to a flow count based purely on the raw string map rather than failing the whole run.
-		fmt.Fprintf(os.Stderr, "warning: could not parse Want for %s: %v\n", cr.Func, err)
+func buildLLMEffectivenessResult(
+	summaryName string,
+	checkResults []rawCheckResult,
+	constructiveByFunc map[string]rawCheckResult,
+) (evalLLMEffectivenessResult, error) {
+	llmSummaries := make([]summaries.DetailedSummary, 0, len(checkResults))
+	for _, checkResult := range checkResults {
+		llmSummary, err := toDetailedSummary(checkResult.Want)
+		if err != nil {
+			return evalLLMEffectivenessResult{}, fmt.Errorf(
+				"parsing LLM summary for %s: %w", checkResult.Func, err,
+			)
+		}
+		llmSummaries = append(llmSummaries, llmSummary)
 	}
 
-	r := result{
-		Name:                 cr.Func,
-		CheckerSoundness:     cr.Soundness,
-		CheckerMethod:        cr.Method,
-		CheckerSeconds:       cr.Elapsed.Seconds(),
-		GroundTruthFlowCount: flowCount(cr.Want),
+	checkerSoundness := aggregateCheckerSoundness(checkResults)
+	llmUnion := unionDetailedSummaries(llmSummaries)
+	result := evalLLMEffectivenessResult{
+		Name:                         summaryName,
+		ReachableImplementationCount: len(checkResults),
+		CheckerSoundness:             checkerSoundness,
+		LLMFlowCount:                 detailedFlowCount(llmUnion),
+	}
+	if !isProvenSound(checkerSoundness) {
+		return result, nil
 	}
 
-	constructiveResult, ok := constructiveByFunc[cr.Func]
-	if !ok {
-		return r
+	constructiveSummaries := make([]summaries.DetailedSummary, 0, len(checkResults))
+	for _, checkResult := range checkResults {
+		constructiveResult, ok := constructiveByFunc[checkResult.Func]
+		if !ok {
+			return evalLLMEffectivenessResult{}, fmt.Errorf(
+				"checker marked %s %s, but no constructive result exists for %s",
+				summaryName,
+				checkerSoundness,
+				checkResult.Func,
+			)
+		}
+		constructiveSummary, err := toDetailedSummary(constructiveResult.Got)
+		if err != nil {
+			return evalLLMEffectivenessResult{}, fmt.Errorf(
+				"parsing constructive summary for %s: %w", checkResult.Func, err,
+			)
+		}
+		constructiveSummaries = append(constructiveSummaries, constructiveSummary)
 	}
-	constructiveFlowCount := flowCount(constructiveResult.Got)
-	constructiveSeconds := constructiveResult.Elapsed.Seconds()
-	r.ConstructiveFlowCount = &constructiveFlowCount
-	r.ConstructiveSeconds = &constructiveSeconds
 
-	if computeExcessFlows {
-		excess := 0
-		if err == nil {
-			got, gotErr := toDetailedSummary(constructiveResult.Got)
-			if gotErr != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not parse Got for %s: %v\n", cr.Func, gotErr)
-			} else {
-				excess = len(want.UncoveredFlows(got))
+	constructiveUnion := unionDetailedSummaries(constructiveSummaries)
+	constructiveFlowCount := detailedFlowCount(constructiveUnion)
+	// The two sound over-approximations need not be nested: the constructive analysis may have
+	// false-positive flows absent from a sound LLM model. Precision therefore counts only the
+	// opposite difference: LLM flows that the constructive model does not cover.
+	excessFlowCount := len(constructiveUnion.UncoveredFlows(llmUnion))
+	result.ConstructiveFlowCount = &constructiveFlowCount
+	result.ExcessFlowCount = &excessFlowCount
+	return result, nil
+}
+
+// aggregateCheckerSoundness preserves the checker's four verdicts while collapsing reachable
+// interface implementations. Error and unsound dominate; otherwise any soundy implementation
+// makes the aggregate soundy, and only all-sound implementations aggregate to sound.
+func aggregateCheckerSoundness(results []rawCheckResult) check.Soundness {
+	aggregate := check.Sound
+	for _, result := range results {
+		switch result.Soundness {
+		case check.Error:
+			return check.Error
+		case check.Unsound:
+			aggregate = check.Unsound
+		case check.Soundy:
+			if aggregate == check.Sound {
+				aggregate = check.Soundy
+			}
+		case check.Sound:
+			// Keep the current aggregate.
+		default:
+			return check.Error
+		}
+	}
+	return aggregate
+}
+
+// isProvenSound matches the checker's semantics: both sound and soundy prove every must-not-flow;
+// soundy additionally records an unsoundness-risk feature. Both verdicts therefore pass the
+// LLM-effectiveness precision gate.
+func isProvenSound(soundness check.Soundness) bool {
+	return soundness == check.Sound || soundness == check.Soundy
+}
+
+// unionDetailedSummaries computes a flow-set union and removes duplicate edges. This is used to
+// collapse reachable concrete interface implementations into one LLM-effectiveness row.
+func unionDetailedSummaries(all []summaries.DetailedSummary) summaries.DetailedSummary {
+	unionSets := make(map[summaries.SummaryNode]map[summaries.SummaryNode]struct{})
+	for _, summary := range all {
+		for from, tos := range summary.Flows {
+			if unionSets[from] == nil {
+				unionSets[from] = make(map[summaries.SummaryNode]struct{})
+			}
+			for _, to := range tos {
+				unionSets[from][to] = struct{}{}
 			}
 		}
-		r.ConstructiveExcessFlowCount = &excess
 	}
-	return r
+
+	flows := make(map[summaries.SummaryNode][]summaries.SummaryNode, len(unionSets))
+	for from, toSet := range unionSets {
+		flows[from] = make([]summaries.SummaryNode, 0, len(toSet))
+		for to := range toSet {
+			flows[from] = append(flows[from], to)
+		}
+	}
+	return summaries.DetailedSummary{Flows: flows}
 }
 
 // toDetailedSummary parses a check-report.json flow map (as produced by report.go's rawFlows)
@@ -386,17 +582,15 @@ func toDetailedSummary(flows map[string][]string) (summaries.DetailedSummary, er
 	return summaries.DetailedSummary{Flows: parsed}, nil
 }
 
-// flowCount counts individual flow edges in a raw {source: [dest, ...]} map, without needing to
-// parse the summary nodes.
-func flowCount(flows map[string][]string) int {
-	n := 0
-	for _, tos := range flows {
-		n += len(tos)
+func detailedFlowCount(summary summaries.DetailedSummary) int {
+	count := 0
+	for _, tos := range summary.Flows {
+		count += len(tos)
 	}
-	return n
+	return count
 }
 
-func writeOutput(path string, out evalOutput) error {
+func writeOutput(path string, out any) error {
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err
