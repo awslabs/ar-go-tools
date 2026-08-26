@@ -297,7 +297,8 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
 
     # Determine which entries still need summarization by checking for their output files.
     remaining = [
-        entry for entry in all_functions
+        entry
+        for entry in all_functions
         if not (llm_dir / _summary_entry_filename(entry)).exists()
     ]
 
@@ -337,7 +338,8 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
 
     # Recompute what's still missing after the run.
     remaining = [
-        entry for entry in all_functions
+        entry
+        for entry in all_functions
         if not (llm_dir / _summary_entry_filename(entry)).exists()
     ]
 
@@ -360,7 +362,9 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     out.write_text(json.dumps(result, indent=2))
     if remaining:
         missing_names = [_summary_entry_filename(e) for e in remaining]
-        console.print(f"[yellow]Wrote {out} ({total_duration:.1f}s) — missing:[/yellow]")
+        console.print(
+            f"[yellow]Wrote {out} ({total_duration:.1f}s) — missing:[/yellow]"
+        )
         for name in missing_names:
             console.print(f"[yellow]  {name}[/yellow]")
     else:
@@ -395,7 +399,9 @@ def cmd_run_taint(args: argparse.Namespace) -> None:
             "variant": args.variant,
         }
         out.write_text(json.dumps(result, indent=2))
-        console.print(f"[red]{label} timed out after {TAINT_TIMEOUT_SECONDS}s; see {log_file}[/red]")
+        console.print(
+            f"[red]{label} timed out after {TAINT_TIMEOUT_SECONDS}s; see {log_file}[/red]"
+        )
         sys.exit(1)
     except subprocess.CalledProcessError as e:
         is_oom = e.returncode in (137, -9)  # SIGKILL: 128+9 or -9 (Python convention)
@@ -461,14 +467,22 @@ def cmd_eval_workflow_efficiency(args: argparse.Namespace) -> None:
     ]
     missing = [f for f in required if not (results_dir / f).exists()]
     if missing:
-        console.print(f"[yellow]Skipping {args.repo}: missing {', '.join(missing)}[/yellow]")
+        console.print(
+            f"[yellow]Skipping {args.repo}: missing {', '.join(missing)}[/yellow]"
+        )
         return
 
-    summarization = json.loads((results_dir / "run-llm-summarization-results.json").read_text())
+    summarization = json.loads(
+        (results_dir / "run-llm-summarization-results.json").read_text()
+    )
     check = json.loads((results_dir / "run-check-llm-results.json").read_text())
     taint_with = json.loads((results_dir / "run-taint-llm-results.json").read_text())
-    taint_base = json.loads((results_dir / "run-taint-baseline-results.json").read_text())
-    constructive = json.loads((results_dir / "run-constructive-results.json").read_text())
+    taint_base = json.loads(
+        (results_dir / "run-taint-baseline-results.json").read_text()
+    )
+    constructive = json.loads(
+        (results_dir / "run-constructive-results.json").read_text()
+    )
 
     sum_s = summarization.get("duration_seconds") or 0
     check_s = _check_report_duration(check)
@@ -524,7 +538,9 @@ def _run_eval_checker(
     if needs_constructive and not constructive_report.exists():
         missing.append(constructive_report.name)
     if missing:
-        console.print(f"[yellow]Skipping {args.repo}: missing {', '.join(missing)}[/yellow]")
+        console.print(
+            f"[yellow]Skipping {args.repo}: missing {', '.join(missing)}[/yellow]"
+        )
         return
 
     summaries = _ground_truth_files(args.repo)
@@ -876,7 +892,9 @@ def _run_subprocess(
         duration = time.time() - start
 
     if proc.returncode != 0 and proc.returncode not in tolerate_exit_codes:
-        console.print(f"[red]{label} failed (exit {proc.returncode}); see {log_file}[/red]")
+        console.print(
+            f"[red]{label} failed (exit {proc.returncode}); see {log_file}[/red]"
+        )
         raise subprocess.CalledProcessError(proc.returncode, cmd)
     console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")
     return duration
