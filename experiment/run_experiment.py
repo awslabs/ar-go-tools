@@ -750,7 +750,7 @@ def _write_manifest(run: RunPaths, manifest: Dict[str, Any]) -> None:
 
 def _base_config(repo: str) -> Dict[str, Any]:
     target = yaml.safe_load((ARGOT_CONFIGS_DIR / repo / "target.yaml").read_text())
-    return {
+    cfg: Dict[str, Any] = {
         "targets": [target],
         "dataflow-problems": {
             "summarize-on-demand": True,
@@ -761,9 +761,16 @@ def _base_config(repo: str) -> Dict[str, Any]:
             "reports-dir": "logs/argot",
             "log-level": 3,
             "report-paths": True,
-            "analysis-options": {"unsafe-max-depth": 35},
+            "analysis-options": {"unsafe-max-depth": 15, "max-alarms": 30},
         },
     }
+    if repo == "amazon-ssm-agent":
+        # For amazon-ssm-agent, assume that errors returned by fmt.Errorf and log.Errorf don't alias
+        # anything. This helps the analysis scale.
+        cfg["pointer-config"] = {
+            "unsafe-no-effect-functions": ["fmt.Errorf", "log.Errorf"],
+        }
+    return cfg
 
 
 def _taint_specs(repo: str) -> List[Dict[str, Any]]:
