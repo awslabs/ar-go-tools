@@ -59,6 +59,16 @@ MOUNT_PATHS = [p for p in SYNC_PATHS if p != "Dockerfile"] + ["runs"]
 REMOTE_BIN_DIR = f"{REMOTE_REPO_DIR}/experiment/.bin"
 CONTAINER_BIN_DIR = "/go/bin"
 
+# Stable container name so we can docker cp / docker rm it after the run, and a host
+# directory that receives the copied-out container outputs for SSH inspection.
+CONTAINER_NAME = "argot-experiment-run"
+HOST_OUTPUT_DIR = f"{REMOTE_REPO_DIR}/experiment/container-output"
+
+# The two output locations worth keeping from the container: the whole experiment tree,
+# and the per-repo argot logs written under payload/public-repos-checks/<repo>/logs.
+CONTAINER_EXPERIMENT_DIR = "/usr/src/app/experiment"
+CONTAINER_REPOS_DIR = "/usr/src/app/payload/public-repos-checks"
+
 LOCAL_BINARIES = {
     "argot": "./cmd/argot",
     "eval-checker": "./experiment/eval-checker",
@@ -109,6 +119,19 @@ def main() -> int:
             f"mkdir -p {REMOTE_REPO_DIR}/experiment/runs",
             f"cd {REMOTE_REPO_DIR}/experiment",
             docker_run(quoted_cmd, synced),
+            # Docker runs each experiment in an isolated container so persist the output files by:
+            # (1) copying the whole experiment tree and (2) copying each repo's logs/ directory.
+            # This works in case of a failure too.
+            f"mkdir -p {HOST_OUTPUT_DIR}/experiment {HOST_OUTPUT_DIR}/repo-logs",
+            f"docker cp {CONTAINER_NAME}:{CONTAINER_EXPERIMENT_DIR}/. "
+            f"{HOST_OUTPUT_DIR}/experiment/ || true",
+            f"for repo in $(ls {REMOTE_REPO_DIR}/experiment/argot-configs); do "
+            f"mkdir -p {HOST_OUTPUT_DIR}/repo-logs/$repo; "
+            f"docker cp {CONTAINER_NAME}:{CONTAINER_REPOS_DIR}/$repo/logs/. "
+            f"{HOST_OUTPUT_DIR}/repo-logs/$repo/ 2>/dev/null || true; "
+            f"done",
+            f"chown -R ubuntu:ubuntu {HOST_OUTPUT_DIR} || true",
+            f"docker rm -f {CONTAINER_NAME} >/dev/null 2>&1 || true",
         ],
     )
     print(f"Launched, not waiting for completion. Command ID: {command_id}")
@@ -120,6 +143,11 @@ def main() -> int:
     run_id_part = run_id if run_id else "<RUN_ID>"
     print(
         f"Fetch the result with:\npython3 fetch-from-ec2.py {args.instance_id} --run-id {run_id_part}"
+    )
+    print(
+        f"Container outputs are also copied to {HOST_OUTPUT_DIR} on the instance "
+        f"(visible over SSH): experiment/ (full experiment tree) and repo-logs/<repo>/ "
+        f"(per-repo argot logs), populated after the run finishes."
     )
     return 0
 
@@ -215,7 +243,8 @@ def docker_run(quoted_cmd: str, with_local_binaries: bool) -> str:
         ]
         env.append(f"-e EVAL_CHECKER_BIN={CONTAINER_BIN_DIR}/eval-checker")
     return (
-        f"docker run --rm --memory=50g --memory-swap=50g "
+        f"docker rm -f {CONTAINER_NAME} >/dev/null 2>&1; "
+        f"docker run --name {CONTAINER_NAME} --memory=50g --memory-swap=50g "
         f"{' '.join(mounts)} {' '.join(env)} argot-experiment {quoted_cmd}"
     )
 
