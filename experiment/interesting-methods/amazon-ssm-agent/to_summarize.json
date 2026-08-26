@@ -1,10 +1,5 @@
 [
   {
-    "package": "github.com/aws/amazon-ssm-agent/agent/plugins/downloadcontent/httpresource/handler/auth/digest",
-    "receiver": "*Authorization",
-    "method": "String"
-  },
-  {
     "package": "github.com/aws/amazon-ssm-agent/agent/log",
     "interface": "BasicT",
     "method": "Infof"
@@ -33,11 +28,6 @@
     "package": "github.com/aws/aws-sdk-go/aws/csm",
     "receiver": "*metric",
     "method": "TruncateFields"
-  },
-  {
-    "package": "github.com/aws/aws-sdk-go/aws/csm",
-    "receiver": "*metric",
-    "method": "SetException"
   },
   {
     "package": "github.com/aws/aws-sdk-go/aws/csm",

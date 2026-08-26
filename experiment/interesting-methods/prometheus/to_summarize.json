@@ -5,11 +5,6 @@
     "method": "serve"
   },
   {
-    "package": "net/http",
-    "receiver": "*http2serverConn",
-    "method": "serve"
-  },
-  {
     "package": "github.com/prometheus/common/expfmt",
     "function": "MetricFamilyToOpenMetrics"
   },
@@ -52,34 +47,6 @@
   {
     "package": "net/http",
     "function": "DetectContentType"
-  },
-  {
-    "package": "net/http",
-    "function": "NewRequest"
-  },
-  {
-    "package": "net/http",
-    "function": "NewRequestWithContext"
-  },
-  {
-    "package": "net/http",
-    "function": "Get"
-  },
-  {
-    "package": "net/http",
-    "function": "Post"
-  },
-  {
-    "package": "net/http",
-    "function": "ServeFile"
-  },
-  {
-    "package": "net/http",
-    "function": "FileServer"
-  },
-  {
-    "package": "net/http",
-    "function": "SetCookie"
   },
   {
     "package": "internal/stringslite",

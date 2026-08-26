@@ -38,17 +38,7 @@
     },
     {
         "package": "crypto/internal/fips140/nistec/fiat",
-        "receiver": "*P256Element",
-        "method": "Square"
-    },
-    {
-        "package": "crypto/internal/fips140/nistec/fiat",
         "receiver": "*P384Element",
-        "method": "Square"
-    },
-    {
-        "package": "crypto/internal/fips140/nistec/fiat",
-        "receiver": "*P521Element",
         "method": "Square"
     },
     {

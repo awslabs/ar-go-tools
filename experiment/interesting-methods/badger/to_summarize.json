@@ -42,10 +42,6 @@
     "function": "Sprintln"
   },
   {
-    "package": "syscall",
-    "function": "Faccessat"
-  },
-  {
     "package": "github.com/dgraph-io/badger/v4/table",
     "receiver": "*Table",
     "method": "initBiggestAndSmallest$1"
