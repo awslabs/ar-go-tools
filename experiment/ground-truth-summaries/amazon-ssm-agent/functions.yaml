@@ -30,26 +30,6 @@ dataflow-summaries:
       - from: "(!receiver).Retryer"
         to: "!ret 0"
   # ==========================================================================
-  # (*github.com/aws/aws-sdk-go/aws/csm.metric).SetException   (receiver)
-  # go doc:
-  #   package csm // import "github.com/aws/aws-sdk-go/aws/csm"
-  #
-  #   func (m *metric) SetException(e metricException)
-  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/csm#metric.SetException
-  # ==========================================================================
-  - package: "github.com/aws/aws-sdk-go/aws/csm"
-    receiver: "*metric"
-    method: "SetException"
-    flows:
-      - from: "!arg 0"
-        to: "(!receiver).AWSException"
-      - from: "!arg 0"
-        to: "(!receiver).AWSExceptionMessage"
-      - from: "!arg 0"
-        to: "(!receiver).SDKException"
-      - from: "!arg 0"
-        to: "(!receiver).SDKExceptionMessage"
-  # ==========================================================================
   # (*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException   (receiver)
   # go doc:
   #   package csm // import "github.com/aws/aws-sdk-go/aws/csm"
@@ -69,3 +49,80 @@ dataflow-summaries:
         to: "(!receiver).FinalSDKException"
       - from: "!arg 0"
         to: "(!receiver).FinalSDKExceptionMessage"
+  # ==========================================================================
+  # github.com/aws/aws-sdk-go/aws.mergeInConfig   (function)
+  # go doc -u:
+  #   package aws // import "github.com/aws/aws-sdk-go/aws"
+  #
+  #   func mergeInConfig(dst *Config, other *Config)
+  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws (unexported; see source)
+  #
+  # Each field on other conditionally overwrites the same-named field on dst (nil/unset check
+  # guards each copy). All 31 field-to-field flows below are independent copies, one per Config
+  # field the function merges.
+  # ==========================================================================
+  - package: "github.com/aws/aws-sdk-go/aws"
+    function: "mergeInConfig"
+    flows:
+      - from: "(!arg 1).CredentialsChainVerboseErrors"
+        to: "(!arg 0).CredentialsChainVerboseErrors"
+      - from: "(!arg 1).Credentials"
+        to: "(!arg 0).Credentials"
+      - from: "(!arg 1).Endpoint"
+        to: "(!arg 0).Endpoint"
+      - from: "(!arg 1).EndpointResolver"
+        to: "(!arg 0).EndpointResolver"
+      - from: "(!arg 1).Region"
+        to: "(!arg 0).Region"
+      - from: "(!arg 1).DisableSSL"
+        to: "(!arg 0).DisableSSL"
+      - from: "(!arg 1).HTTPClient"
+        to: "(!arg 0).HTTPClient"
+      - from: "(!arg 1).LogLevel"
+        to: "(!arg 0).LogLevel"
+      - from: "(!arg 1).Logger"
+        to: "(!arg 0).Logger"
+      - from: "(!arg 1).MaxRetries"
+        to: "(!arg 0).MaxRetries"
+      - from: "(!arg 1).Retryer"
+        to: "(!arg 0).Retryer"
+      - from: "(!arg 1).DisableParamValidation"
+        to: "(!arg 0).DisableParamValidation"
+      - from: "(!arg 1).DisableComputeChecksums"
+        to: "(!arg 0).DisableComputeChecksums"
+      - from: "(!arg 1).S3ForcePathStyle"
+        to: "(!arg 0).S3ForcePathStyle"
+      - from: "(!arg 1).S3Disable100Continue"
+        to: "(!arg 0).S3Disable100Continue"
+      - from: "(!arg 1).S3UseAccelerate"
+        to: "(!arg 0).S3UseAccelerate"
+      - from: "(!arg 1).S3DisableContentMD5Validation"
+        to: "(!arg 0).S3DisableContentMD5Validation"
+      - from: "(!arg 1).S3UseARNRegion"
+        to: "(!arg 0).S3UseARNRegion"
+      - from: "(!arg 1).UseDualStack"
+        to: "(!arg 0).UseDualStack"
+      - from: "(!arg 1).UseDualStackEndpoint"
+        to: "(!arg 0).UseDualStackEndpoint"
+      - from: "(!arg 1).EC2MetadataDisableTimeoutOverride"
+        to: "(!arg 0).EC2MetadataDisableTimeoutOverride"
+      - from: "(!arg 1).EC2MetadataEnableFallback"
+        to: "(!arg 0).EC2MetadataEnableFallback"
+      - from: "(!arg 1).SleepDelay"
+        to: "(!arg 0).SleepDelay"
+      - from: "(!arg 1).DisableRestProtocolURICleaning"
+        to: "(!arg 0).DisableRestProtocolURICleaning"
+      - from: "(!arg 1).EnforceShouldRetryCheck"
+        to: "(!arg 0).EnforceShouldRetryCheck"
+      - from: "(!arg 1).EnableEndpointDiscovery"
+        to: "(!arg 0).EnableEndpointDiscovery"
+      - from: "(!arg 1).DisableEndpointHostPrefix"
+        to: "(!arg 0).DisableEndpointHostPrefix"
+      - from: "(!arg 1).STSRegionalEndpoint"
+        to: "(!arg 0).STSRegionalEndpoint"
+      - from: "(!arg 1).S3UsEast1RegionalEndpoint"
+        to: "(!arg 0).S3UsEast1RegionalEndpoint"
+      - from: "(!arg 1).LowerCaseHeaderMaps"
+        to: "(!arg 0).LowerCaseHeaderMaps"
+      - from: "(!arg 1).UseFIPSEndpoint"
+        to: "(!arg 0).UseFIPSEndpoint"

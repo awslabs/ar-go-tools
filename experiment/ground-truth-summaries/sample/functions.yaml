@@ -55,16 +55,16 @@ dataflow-summaries:
       - from: '(!arg 0).x'
         to: '(!ret 0).x'
   # ==========================================================================
-  # (*crypto/internal/fips140/nistec/fiat.P521Element).Square   (receiver)
+  # (*crypto/internal/fips140/nistec/fiat.P384Element).Square   (receiver)
   # go doc:
   #   package fiat // import "crypto/internal/fips140/nistec/fiat"
   #   
-  #   func (e *P521Element) Square(t *P521Element) *P521Element
+  #   func (e *P384Element) Square(t *P384Element) *P384Element
   #       Square sets e = t * t, and returns e.
-  # docs: https://pkg.go.dev/crypto/internal/fips140/nistec/fiat#P521Element.Square
+  # docs: https://pkg.go.dev/crypto/internal/fips140/nistec/fiat#P384Element.Square
   # ==========================================================================
   - package: 'crypto/internal/fips140/nistec/fiat'
-    receiver: '*P521Element'
+    receiver: '*P384Element'
     method: 'Square'
     flows:
       - from: '(!receiver).x'

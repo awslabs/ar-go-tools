@@ -17,41 +17,6 @@ dataflow-summaries:
       - from: '!arg 0'
         to: '!receiver'
   # ==========================================================================
-  # (*net/http.http2serverConn).serve   (receiver)
-  # go doc:
-  #   package http // import "net/http"
-  #   
-  #   func (sc *http2serverConn) serve(conf http2http2Config)
-  # docs: https://pkg.go.dev/net/http#http2serverConn.serve
-  #
-  # Keep only DURABLE flows: conf data still in a receiver field after serve() returns.
-  #   readIdleTimeout : sc.readIdleTimeout = conf.SendPingTimeout
-  #   readIdleTimer   : afterFunc(conf.SendPingTimeout,...) timer embeds the duration
-  #   inflow          : if diff>0, sendWindowUpdate -> inflow.add(MaxUploadBufferPerConnection)
-  #   framer          : SETTINGS(MaxReadFrameSize,MaxDecoderHeaderTableSize) + WINDOW_UPDATE
-  #                     serialize into sc.framer.wbuf (reused buffer, only reset on the next
-  #                     startWrite); can linger on an early return -> kept for soundness.
-  # Dropped flows (not durable): writeSched (Pop'd during handshake), bw (Flush sets w.bw=nil),
-  # conn (net.Conn.Write egress, no read-back).
-  # ==========================================================================
-  - package: 'net/http'
-    receiver: '*http2serverConn'
-    method: 'serve'
-    flows:
-      - from: '(!arg 0).SendPingTimeout'
-        to: '(!receiver).readIdleTimeout'
-      - from: '(!arg 0).SendPingTimeout'
-        to: '(!receiver).readIdleTimer'
-      - from: '(!arg 0).MaxUploadBufferPerConnection'
-        to: '(!receiver).inflow'
-      # sc.framer.wbuf may retain serialized SETTINGS/WINDOW_UPDATE bytes on early return.
-      - from: '(!arg 0).MaxReadFrameSize'
-        to: '(!receiver).framer'
-      - from: '(!arg 0).MaxDecoderHeaderTableSize'
-        to: '(!receiver).framer'
-      - from: '(!arg 0).MaxUploadBufferPerConnection'
-        to: '(!receiver).framer'
-  # ==========================================================================
   # net/http.Handle   (function)
   # go doc:
   #   package http // import "net/http"
@@ -132,3 +97,26 @@ dataflow-summaries:
     flows:
       - from: '!arg 0'
         to: '!ret 0'
+  # ==========================================================================
+  # net/http.Redirect   (function)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func Redirect(w ResponseWriter, r *Request, url string, code int)
+  #       Redirect replies to the request with a redirect to url, which may be a path
+  #       relative to the request path.
+  # docs: https://pkg.go.dev/net/http#Redirect
+  #
+  # NOTE: r.Method is only compared against "GET"/"HEAD" (not a data flow), so r.URL.Path is the
+  # only field of r that flows to w. w (arg 0) is an interface (ResponseWriter), so all flows to it
+  # are field-insensitive.
+  # ==========================================================================
+  - package: 'net/http'
+    function: 'Redirect'
+    flows:
+      - from: '(!arg 1).URL.Path'
+        to: '!arg 0'
+      - from: '!arg 2'
+        to: '!arg 0'
+      - from: '!arg 3'
+        to: '!arg 0'
