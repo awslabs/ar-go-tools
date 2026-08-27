@@ -16,13 +16,14 @@ import argparse
 import json
 import os
 import re
+import resource
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import yaml
 from rich.console import Console
@@ -51,6 +52,10 @@ TAINT_TIMEOUT_SECONDS = 1800  # 30 minutes
 
 # Per-repo timeout for run-check and run-constructive.
 CHECK_TIMEOUT_SECONDS = 1800  # 30 minutes
+
+# Docker limits the whole container to 50g; cap an individual constructive child at 40 GiB so
+# Python, the container runtime, and filesystem cache cannot collectively trigger a cgroup OOM.
+CONSTRUCTIVE_MEMORY_LIMIT_BYTES = 40 * 1024**3
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +257,7 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
                 log_file=log_file,
                 label=f"run-constructive ({args.repo}, {item.id})",
                 timeout=CHECK_TIMEOUT_SECONDS,
+                memory_limit_bytes=CONSTRUCTIVE_MEMORY_LIMIT_BYTES,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             console.print(
@@ -908,6 +914,24 @@ def _read_taint_report(log_file: Path, repo_path: Path) -> Dict[str, Any]:
     }
 
 
+def _address_space_limit_preexec(limit_bytes: int) -> Callable[[], None]:
+    if sys.platform != "linux":
+        raise RuntimeError(
+            "constructive memory limits require Linux RLIMIT_AS; refusing to run without one"
+        )
+
+    def set_limit() -> None:
+        _, hard_limit = resource.getrlimit(resource.RLIMIT_AS)
+        effective_limit = (
+            min(limit_bytes, hard_limit)
+            if hard_limit != resource.RLIM_INFINITY
+            else limit_bytes
+        )
+        resource.setrlimit(resource.RLIMIT_AS, (effective_limit, effective_limit))
+
+    return set_limit
+
+
 def _run_subprocess(
     cmd: List[str],
     cwd: Path,
@@ -915,13 +939,26 @@ def _run_subprocess(
     label: str,
     timeout: Optional[int] = None,
     tolerate_exit_codes: Tuple[int, ...] = (),
+    memory_limit_bytes: Optional[int] = None,
 ) -> float:
     """Run subprocess, log output, return duration. Raises on failure."""
+    if memory_limit_bytes is not None and memory_limit_bytes <= 0:
+        raise ValueError("memory_limit_bytes must be positive")
     console.print(f"[dim]Running {label}...[/dim]")
     log_file.parent.mkdir(parents=True, exist_ok=True)
     start = time.time()
     with open(log_file, "w") as f:
-        proc = subprocess.Popen(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            preexec_fn=(
+                _address_space_limit_preexec(memory_limit_bytes)
+                if memory_limit_bytes is not None
+                else None
+            ),
+        )
     try:
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
