@@ -227,34 +227,37 @@ def cmd_run_check(args: argparse.Namespace) -> None:
 
 def cmd_run_constructive(args: argparse.Namespace) -> None:
     run: RunPaths = args.run
-    generate_configs(args.repo, run)
     paths = [args.methods] if args.methods else _ground_truth_files(args.repo)
+    generated = generate_configs(args.repo, run, constructive_paths=paths)
     out = run.result_path(args.repo, "run-constructive-results")
     repo_path = _repo_dir(args.repo)
     (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
 
     merged: Dict[str, Any] = {}
     total_duration = 0.0
-    for p in paths:
-        config = run.config_dir(args.repo) / f"check-ground-truth-{p.stem}.yaml"
-        if not config.exists():
-            console.print(f"[red]No generated config for {p.stem}[/red]")
-            sys.exit(1)
-        part_out = out.with_suffix(f".{p.stem}.json")
+    for item in generated.constructive_items:
+        part_out = out.with_suffix(f".{item.id}.json")
         log_file = part_out.with_suffix(".log")
         try:
             duration = _run_subprocess(
-                ["argot", "check", "-config", str(config.resolve()), "-via", "naive"],
+                [
+                    "argot",
+                    "check",
+                    "-config",
+                    str(item.config_path.resolve()),
+                    "-via",
+                    "naive",
+                ],
                 cwd=repo_path,
                 log_file=log_file,
-                label=f"run-constructive ({args.repo}, {p.stem})",
+                label=f"run-constructive ({args.repo}, {item.id})",
                 timeout=CHECK_TIMEOUT_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             console.print(
-                f"[red]run-constructive {p.stem} failed ({e}); null result[/red]"
+                f"[red]run-constructive {item.id} failed ({e}); null result[/red]"
             )
-            merged.setdefault(p.stem, None)
+            merged.setdefault(item.id, None)
             continue
         report_path = _find_check_report(log_file)
         if not report_path:
@@ -584,8 +587,26 @@ def _check_report_duration(report: Dict[str, Any]) -> float:
 # ---------------------------------------------------------------------------
 
 
-def generate_configs(repo: str, run: RunPaths) -> List[Path]:
-    """Write all argot-config.yaml files for repo into the run's generated-configs directory."""
+@dataclass(frozen=True)
+class ConstructiveWorkItem:
+    id: str
+    source_path: Path
+    summary_path: Path
+    config_path: Path
+
+
+@dataclass(frozen=True)
+class GeneratedConfigs:
+    written: List[Path]
+    constructive_items: List[ConstructiveWorkItem]
+
+
+def generate_configs(
+    repo: str,
+    run: RunPaths,
+    constructive_paths: Optional[List[Path]] = None,
+) -> GeneratedConfigs:
+    """Write experiment configs and one constructive check config per selected summary."""
     repo_path = _repo_dir(repo)
     out_dir = run.config_dir(repo)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -652,6 +673,31 @@ def generate_configs(repo: str, run: RunPaths) -> List[Path]:
     write_split("ground-truth", gt_paths)
     write_split("llm", [llm_path])
 
+    constructive_items: List[ConstructiveWorkItem] = []
+    constructive_dir = out_dir / "_constructive"
+    for source_path in constructive_paths or gt_paths:
+        entries = (
+            (yaml.safe_load(source_path.read_text()) or {}).get("dataflow-summaries")
+            or []
+        )
+        for index, entry in enumerate(entries):
+            summary_name = _summary_entry_filename(entry).removesuffix(".yaml")
+            item_id = f"{source_path.stem}-{index:03d}-{summary_name}"
+            summary_path = constructive_dir / f"{item_id}.yaml"
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(yaml.safe_dump({"dataflow-summaries": [entry]}))
+            config_path = write_check(
+                f"check-ground-truth-constructive-{item_id}.yaml", [rel(summary_path)]
+            )
+            constructive_items.append(
+                ConstructiveWorkItem(
+                    id=item_id,
+                    source_path=source_path,
+                    summary_path=summary_path,
+                    config_path=config_path,
+                )
+            )
+
     extra = sorted(
         p.name for p in out_dir.iterdir() if p.is_file() and p.name not in produced
     )
@@ -659,7 +705,7 @@ def generate_configs(repo: str, run: RunPaths) -> List[Path]:
         console.print(
             f"[yellow]{repo}: {len(extra)} stale file(s) in {out_dir}: {', '.join(extra)}[/yellow]"
         )
-    return written
+    return GeneratedConfigs(written=written, constructive_items=constructive_items)
 
 
 # ---------------------------------------------------------------------------
