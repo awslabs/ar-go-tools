@@ -75,11 +75,19 @@ type IntraAnalysisState struct {
 
 	// reconstructPaths is set only after the forward fixpoint. It changes getMarks from a raw
 	// lattice query into bounded backward reconstruction and never affects changeFlag.
-	reconstructPaths    bool
-	eagerInputPaths     bool
+	reconstructPaths bool
+	eagerInputPaths  bool
+
+	// reconstructionCache memoizes the final MarkWithAccessPath values requested by summary sinks.
+	// instructionsByID and stores support the committed SSA reconstruction that remains a soundness
+	// oracle while compact access-path provenance coverage is being validated.
 	reconstructionCache map[reconstructionQuery][]MarkWithAccessPath
 	instructionsByID    []ssa.Instruction
 	stores              []*ssa.Store
+
+	// accessPathProvenance stores incoming path-transforming derivations for each compact base-mark
+	// fact. It never participates in lattice equality, changeFlag, or worklist scheduling.
+	accessPathProvenance map[accessPathProvenanceFact]map[accessPathProvenanceEdge]struct{}
 }
 
 // initialize initializes the state of the analysis
@@ -304,9 +312,68 @@ func (state *IntraAnalysisState) rawMarks(i ssa.Instruction, v ssa.Value, path s
 	return origins
 }
 
+// markMatch preserves both sides of a path-sensitive lattice lookup. storedPath identifies the
+// predecessor access-path provenance fact; residual is the path remaining on the destination after
+// projecting the field/index requested by a transfer.
+type markMatch struct {
+	mark       *Mark
+	storedPath string
+	residual   string
+}
+
+// rawMarkMatches performs the forward lattice lookup used by transferPre while retaining the
+// stored predecessor path. getMarks cannot be used here because, after convergence, it returns
+// summary-labelled reconstruction results rather than raw lattice facts.
+func (state *IntraAnalysisState) rawMarkMatches(
+	i ssa.Instruction, v ssa.Value, path string,
+) []markMatch {
+	abstractValue := state.abstractValueAt(i, v)
+	if abstractValue == nil {
+		return nil
+	}
+	var matches []markMatch
+	for storedPath, marks := range abstractValue.PathMappings() {
+		residual := storedPath
+		if path != "" {
+			if storedPath == "" {
+				residual = ""
+			} else {
+				var ok bool
+				residual, ok = accessPathCutPrefix(storedPath, path)
+				if !ok {
+					continue
+				}
+			}
+		}
+		for mark := range marks {
+			matches = append(matches, markMatch{mark: mark, storedPath: storedPath, residual: residual})
+		}
+	}
+	return matches
+}
+
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes
 func simpleTransfer(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
 	transfer(ctx, state, loc, in, out, "", NonIndexMark)
+}
+
+// recordAccessPathTransfer adds a path relationship for an operation whose forward lattice
+// semantics intentionally remain coarser. It must describe the same in/out values marked by the
+// ordinary transfer and cannot add a lattice fact or affect convergence.
+func recordAccessPathTransfer(
+	state *IntraAnalysisState,
+	loc ssa.Instruction,
+	in, out ssa.Value,
+	transform pathTransform,
+) {
+	for _, origin := range state.rawMarkMatches(loc, in, "") {
+		state.recordAccessPathProvenance(
+			makeAccessPathProvenanceFact(in, origin.storedPath, origin.mark),
+			makeAccessPathProvenanceFact(out, origin.residual, origin.mark),
+			transform,
+			loc,
+		)
+	}
 }
 
 // transfer propagates all the marks from in to out with the object Path string
@@ -318,19 +385,24 @@ func transfer(ctx context.Context, state *IntraAnalysisState, loc ssa.Instructio
 // transferPre propagates all the marks from in to out with the object Path string
 // an index >= 0 indicates that element index of the tuple in is accessed
 // a value of true for pre indicates that field-sensitive value a prepended with indexing
+//
+// The additional access-path provenance edge mirrors the same projection/injection and is recorded
+// before markValue's novelty check so joins retain every influencing assignment.
 func transferPre(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
 	index MarkIndex, pre bool) {
 	state.checkFlowFromGlobal(ctx, loc, in, out, index)
 	fieldLen := state.flowInfo.fieldLength[state.flowInfo.ValueID[out]]
-	for _, origin := range state.getMarks(loc, in, path, false) {
-		state.flowInfo.SetLoc(origin.Mark, loc)
-
-		if origin.Mark.Index.Kind == NonIndex || index.Kind == NonIndex || index.Value == origin.Mark.Index.Value {
-			newPath := origin.AccessPath
+	for _, origin := range state.rawMarkMatches(loc, in, path) {
+		state.flowInfo.SetLoc(origin.mark, loc)
+		if origin.mark.Index.Kind == NonIndex || index.Kind == NonIndex || index.Value == origin.mark.Index.Value {
+			newPath := origin.residual
+			transform := projectTransform(path)
 			if fieldLen > 0 && pre {
 				newPath = accessPathPrependIndexing(newPath)
+				transform.inject = "[*]"
 			}
-			state.markValue(ctx, loc, out, newPath, origin.Mark)
+			from := makeAccessPathProvenanceFact(in, origin.storedPath, origin.mark)
+			state.markValueFrom(ctx, loc, out, newPath, origin.mark, &from, transform)
 		}
 	}
 
@@ -338,6 +410,9 @@ func transferPre(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruc
 }
 
 // transferCopy propagates the marks for a load, which only requires copying over marks and paths
+//
+// An identity access-path provenance edge is still required because the SSA base variable changes;
+// otherwise a backward walk would stop at out instead of continuing to in.
 func transferCopy(ctx context.Context, t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
 	t.checkFlowFromGlobal(ctx, loc, in, out, NonIndexMark)
 	pos, ok := t.flowInfo.GetPos(loc, in)
@@ -350,8 +425,11 @@ func transferCopy(ctx context.Context, t *IntraAnalysisState, loc ssa.Instructio
 		return
 	}
 	aState := t.flowInfo.MarkedValues[pos]
-	for _, markWithPath := range aState.AllMarks() {
-		t.markValue(ctx, loc, out, markWithPath.AccessPath, markWithPath.Mark)
+	for storedPath, marks := range aState.PathMappings() {
+		for mark := range marks {
+			from := makeAccessPathProvenanceFact(in, storedPath, mark)
+			t.markValueFrom(ctx, loc, out, storedPath, mark, &from, identityTransform())
+		}
 	}
 }
 
@@ -469,8 +547,37 @@ func (state *IntraAnalysisState) checkFlowFromGlobal(ctx context.Context, loc ss
 // If the Value was not marked, it changes the changeFlag to true to indicate
 // that the mark information has changed for the current pass.
 //
+// Sources and call boundaries have no predecessor access-path fact, so they enter through this
+// wrapper; propagation between existing facts uses markValueFrom.
+func (state *IntraAnalysisState) markValue(
+	ctx context.Context, i ssa.Instruction, v ssa.Value, path string, mark *Mark,
+) {
+	state.markValueFrom(ctx, i, v, path, mark, nil, identityTransform())
+}
+
+// markValueFrom records an influencing assignment before asking whether the destination lattice
+// fact is new. This ordering is essential at joins: the destination mark may already exist while a
+// second assignment supplies a different source path that must remain in the summary.
+//
+// The design follows StubDroid's key optimization but is self-contained here: the forward fixpoint
+// carries one top-level source mark, while this auxiliary graph records how fields/indexes change
+// along propagation. markValueFrom changes changeFlag only when AddMark adds a lattice fact;
+// Access-path provenance additions never schedule another fixpoint iteration.
+//
 //gocyclo:ignore
-func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instruction, v ssa.Value, path string, mark *Mark) {
+func (state *IntraAnalysisState) markValueFrom(
+	ctx context.Context,
+	i ssa.Instruction,
+	v ssa.Value,
+	path string,
+	mark *Mark,
+	from *accessPathProvenanceFact,
+	transform pathTransform,
+) {
+	target := makeAccessPathProvenanceFact(v, path, mark)
+	if from != nil {
+		state.recordAccessPathProvenance(*from, target, transform, i)
+	}
 	if vok, hasMark := state.flowInfo.HasMarkAt(i, v, path, mark); !vok || hasMark {
 		return
 	}
@@ -478,7 +585,7 @@ func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instructio
 	state.changeFlag = state.flowInfo.AddMark(i, v, path, mark)
 	// Propagate to any other Value that is an alias of v
 	for _, ptr := range state.findAllPointers(v) {
-		state.markPtrAliases(ctx, i, mark, path, ptr)
+		state.markPtrAliases(ctx, i, mark, path, ptr, target)
 	}
 
 	if v == nil {
@@ -488,44 +595,55 @@ func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instructio
 	switch miVal := v.(type) {
 	case *ssa.Slice:
 		// if the element marked is a slice, then the underlying object needs to be marked
-		state.markValue(ctx, i, miVal.X, path, mark)
+		state.markValueFrom(ctx, i, miVal.X, path, mark, &target, identityTransform())
 	case *ssa.MakeInterface:
 		// if the element marked is an interface, then the original object needs to be marked
-		state.markValue(ctx, i, miVal.X, path, mark)
+		state.markValueFrom(ctx, i, miVal.X, path, mark, &target, identityTransform())
 	case *ssa.IndexAddr:
 		// if the element marked results from indexing some object, then that object is marked with indexing
-		state.markValue(ctx, i, miVal.X, accessPathPrependIndexing(path), mark)
+		state.markValueFrom(ctx, i, miVal.X, accessPathPrependIndexing(path), mark,
+			&target, injectTransform("[*]"))
 	case *ssa.Index:
 		// if the element marked results from indexing some object, then that object is marked with indexing
-		state.markValue(ctx, i, miVal.X, accessPathPrependIndexing(path), mark)
+		state.markValueFrom(ctx, i, miVal.X, accessPathPrependIndexing(path), mark,
+			&target, injectTransform("[*]"))
 	case *ssa.Field:
 		// if the element marked results from accessing a field of some object, then that object is marked at that field
 		fieldInfo := analysisutil.FieldFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldInfo.FieldName, fieldInfo.IsEmbedded)
-		state.markValue(ctx, i, miVal.X, newAccessPath, mark)
+		transform := identityTransform()
+		if !fieldInfo.IsEmbedded {
+			transform = injectTransform("." + fieldInfo.FieldName)
+		}
+		state.markValueFrom(ctx, i, miVal.X, newAccessPath, mark, &target, transform)
 	case *ssa.FieldAddr:
 		// if the element marked results from accessing a field of some object, then that object is marked at that field
 		fieldInfo := analysisutil.FieldAddrFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldInfo.FieldName, fieldInfo.IsEmbedded)
-		state.markValue(ctx, i, miVal.X, newAccessPath, mark)
+		transform := identityTransform()
+		if !fieldInfo.IsEmbedded {
+			transform = injectTransform("." + fieldInfo.FieldName)
+		}
+		state.markValueFrom(ctx, i, miVal.X, newAccessPath, mark, &target, transform)
 	case *ssa.UnOp:
 		// if the element marked was loaded from a pointer-like object, that pointer-like object is now marked
 		if miVal.Op == token.MUL && lang.IsNillableType(miVal.X.Type()) {
-			state.markValue(ctx, i, miVal.X, path, mark)
+			state.markValueFrom(ctx, i, miVal.X, path, mark, &target, identityTransform())
 		}
 	case *ssa.Next:
 		// if the element marked is the result of next on an iterator, then the iterator is marked to ensure the mark
 		// propagates to the object being iterated on
 		if !miVal.IsString {
-			state.markValue(ctx, i, miVal.Iter, accessPathPrependIndexing(path), mark)
+			state.markValueFrom(ctx, i, miVal.Iter, accessPathPrependIndexing(path), mark,
+				&target, injectTransform("[*]"))
 		}
 	case *ssa.Range:
 		// if the iterator is marked then the underlying map needs to be marked
-		state.markValue(ctx, i, miVal.X, path, mark)
+		state.markValueFrom(ctx, i, miVal.X, path, mark, &target, identityTransform())
 	case *ssa.Extract:
 		// if an extracted object of pointer-like type is marked, then the tuple is marked at that index
 		if lang.IsNillableType(miVal.Type()) {
-			state.markValue(ctx, i, miVal.Tuple, path, mark)
+			state.markValueFrom(ctx, i, miVal.Tuple, path, mark, &target, identityTransform())
 		}
 	}
 
@@ -535,7 +653,7 @@ func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instructio
 		referrers := v.Referrers()
 		if referrers != nil {
 			for _, referrer := range *referrers {
-				state.propagateToReferrer(ctx, i, referrer, v, mark, path)
+				state.propagateToReferrer(ctx, i, referrer, v, mark, path, target)
 			}
 		}
 	}
@@ -546,67 +664,76 @@ func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instructio
 // location in the program.
 //
 //gocyclo:ignore
-func (state *IntraAnalysisState) propagateToReferrer(ctx context.Context, i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark *Mark,
-	path string) {
+func (state *IntraAnalysisState) propagateToReferrer(
+	ctx context.Context,
+	i ssa.Instruction,
+	ref ssa.Instruction,
+	v ssa.Value,
+	mark *Mark,
+	path string,
+	from accessPathProvenanceFact,
+) {
 	switch referrer := ref.(type) {
 	case *ssa.Store:
 		if referrer.Val == v && lang.IsNillableType(referrer.Val.Type()) {
-			state.markValue(ctx, i, referrer.Addr, path, mark)
+			state.markValueFrom(ctx, i, referrer.Addr, path, mark, &from, identityTransform())
 		}
 	case *ssa.IndexAddr:
 		// this referrer accesses the marked value's index
 		path2, ok := accessPathMatchIndex(path)
 		if ok && referrer.X == v {
-			state.markValue(ctx, i, referrer, path2, mark)
+			state.markValueFrom(ctx, i, referrer, path2, mark, &from, projectTransform("[*]"))
 		}
 	case *ssa.FieldAddr:
 		// this referrer accesses the marked value's field
 		path2 := path
 		fieldInfo := analysisutil.FieldAddrFieldInfo(referrer)
 		ok := true
+		transform := identityTransform()
 		if !fieldInfo.IsEmbedded {
 			path2, ok = accessPathMatchField(path, fieldInfo.FieldName)
+			transform = projectTransform("." + fieldInfo.FieldName)
 		}
 		if referrer.X == v && ok {
-			state.markValue(ctx, i, referrer, path2, mark)
+			state.markValueFrom(ctx, i, referrer, path2, mark, &from, transform)
 		}
 	case *ssa.UnOp:
 		// this referrer dereferences the marked value
-		if referrer.Op == token.MUL {
-			state.markValue(ctx, i, referrer, path, mark)
-		} else if referrer.Op == token.ARROW {
-			state.markValue(ctx, i, referrer, path, mark)
+		if referrer.Op == token.MUL || referrer.Op == token.ARROW {
+			state.markValueFrom(ctx, i, referrer, path, mark, &from, identityTransform())
 		}
 	case *ssa.Send:
 		// the value being marked is sent to a channel somewhere. That channel should be marked.
 		if referrer.X == v && lang.IsNillableType(referrer.X.Type()) {
-			state.markValue(ctx, i, referrer.Chan, path, mark)
+			state.markValueFrom(ctx, i, referrer.Chan, path, mark, &from, coarseTransform())
 		}
 	case *ssa.MapUpdate:
 		// propagate to map
 		if referrer.Value == v && lang.IsNillableType(referrer.Value.Type()) {
-			state.markValue(ctx, i, referrer.Map, path, mark)
+			state.markValueFrom(ctx, i, referrer.Map, path, mark, &from, coarseTransform())
 		}
 	case *ssa.Next:
 		// propagate to iterator
 		if !referrer.IsString {
-			state.markValue(ctx, i, referrer.Iter, path, mark)
+			state.markValueFrom(ctx, i, referrer.Iter, path, mark, &from, coarseTransform())
 		}
 	case *ssa.Range:
 		// propagate to map
 		if referrer.X == v {
-			state.markValue(ctx, i, referrer.X, path, mark)
+			state.markValueFrom(ctx, i, referrer.X, path, mark, &from, identityTransform())
 		}
 	case *ssa.Extract:
 		// propagate to tuple
 		if referrer.Tuple == v && lang.IsNillableType(referrer.Type()) {
-			state.markValue(ctx, i, referrer.Tuple, path,
-				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, mark.Index))
+			newMark := state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, mark.Index)
+			state.markValueFrom(ctx, i, referrer.Tuple, path, newMark, &from, identityTransform())
 		}
 	}
 }
 
 // findAllPointers returns all the pointers that point to v
+//
+// Both direct and indirect pointer-analysis queries are included.
 func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer {
 	var allptr []pointer.Pointer
 	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[v]; ptrExists {
@@ -620,7 +747,18 @@ func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer 
 }
 
 // markAllAliases marks all the aliases of the pointer set using mark.
-func (state *IntraAnalysisState) markPtrAliases(ctx context.Context, i ssa.Instruction, mark *Mark, path string, ptr pointer.Pointer) {
+//
+// MayAlias does not prove that two values share the same field offset, so the added access-path
+// provenance edge is coarse. Once the destination already carries this mark, another coarse
+// predecessor cannot add a distinct field path and is skipped to keep the auxiliary graph bounded.
+func (state *IntraAnalysisState) markPtrAliases(
+	ctx context.Context,
+	i ssa.Instruction,
+	mark *Mark,
+	path string,
+	ptr pointer.Pointer,
+	from accessPathProvenanceFact,
+) {
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
 		select {
@@ -632,7 +770,11 @@ func (state *IntraAnalysisState) markPtrAliases(ctx context.Context, i ssa.Instr
 
 		for _, ptr2 := range state.findAllPointers(value) {
 			if ptr2.MayAlias(ptr) {
-				state.markValue(ctx, i, value, path, mark)
+				_, alreadyMarked := state.flowInfo.HasMarkAt(i, value, path, mark)
+				if alreadyMarked {
+					continue
+				}
+				state.markValueFrom(ctx, i, value, path, mark, &from, coarseTransform())
 			}
 		}
 	})

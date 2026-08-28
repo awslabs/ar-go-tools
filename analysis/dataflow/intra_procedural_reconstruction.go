@@ -23,6 +23,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// reconstructionQuery identifies one summary-boundary request. Results are immutable after the
+// forward fixpoint, so caching by instruction, value, and requested path is safe.
 type reconstructionQuery struct {
 	instr      ssa.Instruction
 	value      ssa.Value
@@ -30,12 +32,18 @@ type reconstructionQuery struct {
 	ignorePath bool
 }
 
+// reconstructionState is a state in the committed SSA-based backward oracle. instr is required
+// because mutable values can carry different marks before and after a store; path is the region of
+// value currently being traced toward the mark's source.
 type reconstructionState struct {
 	instr ssa.Instruction
 	value ssa.Value
 	path  string
 }
 
+// reconstructedOrigin is the final relation consumed by SummaryGraph edge construction. mark
+// identifies the top-level interface source, while sourcePath and destinationPath describe the
+// bounded regions below the source and destination nodes.
 type reconstructedOrigin struct {
 	mark            *Mark
 	sourcePath      string
@@ -44,6 +52,11 @@ type reconstructedOrigin struct {
 
 // reconstructMarks recovers input access paths after the forward fixpoint. It never mutates the
 // abstract state; unsupported memory or SSA shapes conservatively produce a field-insensitive path.
+//
+// Compact access-path provenance supplies the normal result. The SSA walk is retained as a
+// soundness oracle during migration, and the two path sets are unioned so incomplete access-path
+// provenance cannot remove a flow. Labelled marks created here are used only to serialize
+// SummaryGraph edges and never re-enter flowInfo.
 func (state *IntraAnalysisState) reconstructMarks(
 	instr ssa.Instruction, value ssa.Value, path string, ignorePath bool,
 ) []MarkWithAccessPath {
@@ -70,7 +83,33 @@ func (state *IntraAnalysisState) reconstructMarks(
 				if !ok {
 					continue
 				}
-				sourcePaths := state.backwardSourcePaths(instr, value, startPath, mark)
+				sourcePaths := state.accessPathProvenanceSourcePaths(
+					makeAccessPathProvenanceFact(value, storedPath, mark), startPath,
+				)
+				if mark.IsCallReturn() && storedPath == "" {
+					// A base call-return mark denotes the entire returned object. Keep the whole-value
+					// relation even when field-specific uses also reconstruct more precise paths.
+					sourcePaths = unionSourcePaths(sourcePaths, []string{""})
+				}
+				if state.summary.Parent.Synthetic != "" || mark.IsBoundVar() {
+					// Synthetic wrappers and bound-variable boundaries preserve the selected captured
+					// subobject while adapting its callable representation.
+					sourcePaths = unionSourcePaths(sourcePaths, []string{startPath})
+				}
+				if mark.IsClosure() {
+					// The closure mark denotes the captured callable value. Preserve a path already
+					// stored on that value, and also relocate through an explicit field-address chain
+					// when the current SSA value names one.
+					sourcePaths = unionSourcePaths(sourcePaths, []string{startPath})
+					_, closurePath := addressRootPath(value)
+					if closurePath != "" {
+						sourcePaths = unionSourcePaths(
+							sourcePaths, []string{appendAccessPaths(closurePath, startPath)},
+						)
+					}
+				}
+				oraclePaths := state.backwardSourcePaths(instr, value, startPath, mark)
+				sourcePaths = unionSourcePaths(sourcePaths, oraclePaths)
 				if len(sourcePaths) == 0 {
 					// The forward fixpoint proved reachability, so failure to invert an operation must
 					// degrade precision rather than discard the flow.
@@ -106,6 +145,28 @@ func (state *IntraAnalysisState) reconstructMarks(
 	return result
 }
 
+// unionSourcePaths combines access-path provenance and oracle results without assigning meaning
+// to order.
+func unionSourcePaths(left, right []string) []string {
+	seen := make(map[string]bool, len(left)+len(right))
+	for _, path := range left {
+		seen[path] = true
+	}
+	for _, path := range right {
+		seen[path] = true
+	}
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	return paths
+}
+
+// reconstructionCandidatePaths expands a root fact only at a summary boundary. This preserves the
+// common suffix represented by StubDroid's rules such as src.prefix.* -> dst.prefix.* without
+// carrying one source-labelled mark per leaf through the fixpoint. Existing non-root facts and
+// explicit queries already provide their required precision and are returned unchanged.
 func (state *IntraAnalysisState) reconstructionCandidatePaths(
 	value ssa.Value, storedPath, queryPath string, ignorePath bool,
 ) []string {
@@ -123,6 +184,8 @@ func (state *IntraAnalysisState) reconstructionCandidatePaths(
 	return paths
 }
 
+// reconstructionPaths applies a sink's query to one stored path. The returned start path is traced
+// toward the source; destinationPath is the unconsumed suffix stored on the SummaryGraph edge.
 func reconstructionPaths(storedPath, queryPath string, ignorePath bool) (string, string, bool) {
 	if ignorePath || queryPath == "" {
 		return storedPath, storedPath, true
@@ -137,6 +200,7 @@ func reconstructionPaths(storedPath, queryPath string, ignorePath bool) (string,
 	return storedPath, remainder, true
 }
 
+// abstractValueAt returns the converged lattice value for one SSA value at one instruction.
 func (state *IntraAnalysisState) abstractValueAt(
 	instr ssa.Instruction, value ssa.Value,
 ) *AbstractValue {
@@ -147,6 +211,11 @@ func (state *IntraAnalysisState) abstractValueAt(
 	return state.flowInfo.MarkedValues[pos]
 }
 
+// backwardSourcePaths is the SSA-based reconstruction oracle used while access-path provenance
+// coverage is being validated. It follows the same instrPrev relation used by the forward merge, reverses SSA definitions, and
+// considers every may-alias reaching store. Including path in the visited state preserves sibling
+// derivations while bounding loops. An operation whose inverse is unknown contributes the empty
+// source path, never the absence of a flow.
 func (state *IntraAnalysisState) backwardSourcePaths(
 	instr ssa.Instruction, value ssa.Value, path string, mark *Mark,
 ) []string {
@@ -209,6 +278,8 @@ func (state *IntraAnalysisState) backwardSourcePaths(
 	return paths
 }
 
+// markAt asks the converged lattice whether mark covers path on value at instr. A root lattice path
+// covers every queried subpath, matching the “taint subfields” meaning of a base input mark.
 func (state *IntraAnalysisState) markAt(
 	instr ssa.Instruction, value ssa.Value, path string, mark *Mark,
 ) bool {
@@ -216,6 +287,8 @@ func (state *IntraAnalysisState) markAt(
 	return present
 }
 
+// isMarkSource reports whether the oracle has reached the interface value that introduced mark.
+// Call arguments use Qualifier because their Mark.Node is the enclosing call instruction.
 func (state *IntraAnalysisState) isMarkSource(current reconstructionState, mark *Mark) bool {
 	sourceValue, sourceIsValue := mark.Node.(ssa.Value)
 	sourceInstr, sourceIsInstr := mark.Node.(ssa.Instruction)
@@ -232,6 +305,8 @@ func (state *IntraAnalysisState) isMarkSource(current reconstructionState, mark 
 	return false
 }
 
+// indexReconstructionInstructions builds compact lookup tables once per analyzed function. Store
+// indexing avoids rescanning every SSA instruction for each backward load or mutated output.
 func (state *IntraAnalysisState) indexReconstructionInstructions() {
 	state.instructionsByID = make([]ssa.Instruction, state.flowInfo.NumInstructions)
 	lang.IterateInstructions(state.summary.Parent, func(_ int, instr ssa.Instruction) {
@@ -246,6 +321,7 @@ func (state *IntraAnalysisState) indexReconstructionInstructions() {
 	})
 }
 
+// instructionByID resolves the IDs used by instrPrev without a map scan during every oracle step.
 func (state *IntraAnalysisState) instructionByID(id IndexT) ssa.Instruction {
 	if int(id) >= len(state.instructionsByID) {
 		return nil
@@ -253,6 +329,9 @@ func (state *IntraAnalysisState) instructionByID(id IndexT) ssa.Instruction {
 	return state.instructionsByID[id]
 }
 
+// invertSSAValue returns feasible predecessor states for a value-producing SSA instruction. The
+// boolean states whether field correspondence is exact; false requires a coarse source flow even
+// when some operands can still be followed precisely.
 func (state *IntraAnalysisState) invertSSAValue(
 	value ssa.Instruction, path string, mark *Mark,
 ) ([]reconstructionState, bool) {
@@ -330,6 +409,9 @@ func (state *IntraAnalysisState) invertSSAValue(
 	return result, false
 }
 
+// reachingStores finds every store that may supply a dereference. Pointer analysis supplies a
+// sound may-alias set; CFG reachability removes stores that cannot precede the load. Extra stores
+// may reduce precision but cannot remove a real flow.
 func (state *IntraAnalysisState) reachingStores(
 	load ssa.Instruction, address ssa.Value, path string, mark *Mark,
 ) []reconstructionState {
@@ -348,12 +430,16 @@ func (state *IntraAnalysisState) reachingStores(
 	return stores
 }
 
+// storeWritesValuePath maps a path on an aliased destination value to the corresponding path on
+// the value written by store.
 func (state *IntraAnalysisState) storeWritesValuePath(
 	store *ssa.Store, value ssa.Value, path string,
 ) (string, bool) {
 	return state.storeAddressMatches(store.Addr, value, path)
 }
 
+// storeAddressMatches checks both aliasing and subobject position. A store through &x.F can supply
+// only a queried path beginning with .F; the returned remainder is the path on the stored value.
 func (state *IntraAnalysisState) storeAddressMatches(
 	address, value ssa.Value, path string,
 ) (string, bool) {
@@ -368,6 +454,8 @@ func (state *IntraAnalysisState) storeAddressMatches(
 	return remainder, ok
 }
 
+// addressRootPath peels field/index addresses and dereferences to recover an aggregate root and
+// the path addressed below it. Embedded fields are omitted because Argot access paths omit them.
 func addressRootPath(value ssa.Value) (ssa.Value, string) {
 	var reversed []string
 	for {
@@ -400,6 +488,29 @@ func addressRootPath(value ssa.Value) (ssa.Value, string) {
 	}
 }
 
+// containerRootPath recognizes values produced from map/slice iteration or lookup. Such an element
+// does not pointer-alias the container value itself, so callers use the returned [*] relationship
+// and add a coarse fallback when materializing container mutations.
+func containerRootPath(value ssa.Value) (ssa.Value, string, bool) {
+	switch x := value.(type) {
+	case *ssa.Extract:
+		return containerRootPath(x.Tuple)
+	case *ssa.Next:
+		return containerRootPath(x.Iter)
+	case *ssa.Range:
+		return x.X, "[*]", true
+	case *ssa.Lookup:
+		return x.X, "[*]", true
+	case *ssa.Index:
+		return x.X, "[*]", true
+	case *ssa.IndexAddr:
+		return x.X, "[*]", true
+	}
+	return nil, "", false
+}
+
+// valuesMayAlias uses both direct and indirect pointer queries. False excludes an edge; true only
+// establishes a possible relationship, so callers must not infer stronger offset equality from it.
 func (state *IntraAnalysisState) valuesMayAlias(a, b ssa.Value) bool {
 	if a == b {
 		return true
@@ -414,6 +525,8 @@ func (state *IntraAnalysisState) valuesMayAlias(a, b ssa.Value) bool {
 	return false
 }
 
+// aliasDestinationPath relocates a reconstructed path from an aliased SSA address to the parameter
+// or free-variable root used by the summary interface.
 func (state *IntraAnalysisState) aliasDestinationPath(
 	value, destination ssa.Value, path string,
 ) string {
@@ -424,6 +537,8 @@ func (state *IntraAnalysisState) aliasDestinationPath(
 	return appendAccessPaths(aliasPath, path)
 }
 
+// appendAccessPaths composes two paths and truncates at the analysis bound. The truncated path
+// denotes the entire subtree below that frontier rather than discarding deeper flows.
 func appendAccessPaths(prefix, suffix string) string {
 	path := prefix + suffix
 	for accessPathLen(path) > maxAccessPathLength+1 {
@@ -434,12 +549,23 @@ func appendAccessPaths(prefix, suffix string) string {
 
 // materializeStoreOutputEdges recovers field-to-field mutations that a base-mark set cannot
 // represent when the source and destination belong to the same parameter/free variable.
+//
+// A whole-input base mark already covers every subpath in the lattice, so writing that mark into a
+// different field is not a novel lattice fact. Reaching stores are therefore inspected at returns.
+// Map/range elements use membership rather than direct pointer aliasing, so their precise [*] edge
+// is accompanied by a field-insensitive fallback.
 func (state *IntraAnalysisState) materializeStoreOutputEdges(ret *ssa.Return) {
 	for _, store := range state.stores {
 		if !state.checkPathBetweenInstructions(store, ret).Satisfiable {
 			continue
 		}
 		root, destinationPath := addressRootPath(store.Addr)
+		containerRelation := false
+		if container, containerPath, ok := containerRootPath(root); ok {
+			root = container
+			destinationPath = appendAccessPaths(containerPath, destinationPath)
+			containerRelation = true
+		}
 		if destinationPath == "" {
 			continue
 		}
@@ -451,6 +577,11 @@ func (state *IntraAnalysisState) materializeStoreOutputEdges(ret *ssa.Return) {
 				adjusted := origin
 				adjusted.AccessPath = appendAccessPaths(destinationPath, origin.AccessPath)
 				state.summary.addParamEdge(adjusted, nil, parameter)
+				if containerRelation {
+					coarse := origin
+					coarse.AccessPath = ""
+					state.summary.addParamEdge(coarse, nil, parameter)
+				}
 			}
 			for _, freeVar := range state.summary.Parent.FreeVars {
 				if !lang.IsNillableType(freeVar.Type()) || !state.valuesMayAlias(root, freeVar) {
@@ -459,6 +590,11 @@ func (state *IntraAnalysisState) materializeStoreOutputEdges(ret *ssa.Return) {
 				adjusted := origin
 				adjusted.AccessPath = appendAccessPaths(destinationPath, origin.AccessPath)
 				state.summary.addFreeVarEdge(adjusted, nil, freeVar)
+				if containerRelation {
+					coarse := origin
+					coarse.AccessPath = ""
+					state.summary.addFreeVarEdge(coarse, nil, freeVar)
+				}
 			}
 		}
 	}

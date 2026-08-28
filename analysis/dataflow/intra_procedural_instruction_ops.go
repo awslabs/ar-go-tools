@@ -267,6 +267,7 @@ func (state *IntraAnalysisState) DoIndex(ctx context.Context, x *ssa.Index) {
 // DoLookup analyzes lookups without indexing sensitivity
 func (state *IntraAnalysisState) DoLookup(ctx context.Context, x *ssa.Lookup) {
 	simpleTransfer(ctx, state, x, x.X, x)
+	recordAccessPathTransfer(state, x, x.X, x, projectTransform("[*]"))
 	simpleTransfer(ctx, state, x, x.Index, x)
 }
 

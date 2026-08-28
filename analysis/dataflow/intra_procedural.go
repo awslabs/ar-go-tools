@@ -85,6 +85,9 @@ func IntraProceduralAnalysis(ctx context.Context, state *State,
 //
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
+//
+// When eagerInputPaths is disabled internally, source access paths are derived after the base-mark
+// fixpoint; intra_procedural_access_path_provenance.go documents that additional phase.
 func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
 	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, false, false)
 }
@@ -92,6 +95,9 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 // RunIntraProceduralFields runs the intra-procedural analysis tracking every value at an access path
 // length of maxPathLen, ignoring the config's field-sensitive-funcs. A maxPathLen of 0 is
 // field-insensitive.
+//
+// This entry point intentionally retains eager input paths because the recursive checker's MaxSAT
+// variables use the explicit path partition selected by the summary under review.
 func RunIntraProceduralFields(
 	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int,
 ) (time.Duration, int, error) {
@@ -101,12 +107,19 @@ func RunIntraProceduralFields(
 // RunIntraProceduralMaxFields runs the intra-procedural analysis at the deepest access path length any
 // analysis tracks, ignoring the config's field-sensitive-funcs. For callers that construct a summary
 // rather than check one, and so have no summary to take a precision from.
+//
+// Unlike RunIntraProceduralFields, this path uses base input marks and reconstructs their concrete
+// paths after convergence because no pre-existing summary defines an eager vocabulary.
 func RunIntraProceduralMaxFields(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
 	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, true, false)
 }
 
 // runIntraProcedural runs the intra-procedural analysis on sm, returning the elapsed time, the
 // number of distinct SSA values tracked, and an error if the analysis failed.
+//
+// With eagerInputPaths disabled, the same run also records path-transforming access-path provenance
+// and uses it after convergence to label SummaryGraph edges; the auxiliary graph never changes
+// lattice convergence.
 func runIntraProcedural(
 	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int, explicitPathLen, eagerInputPaths bool,
 ) (time.Duration, int, error) {
@@ -125,30 +138,36 @@ func runIntraProcedural(
 	}
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
-		flowInfo:            flowInfo,
-		parentAnalyzerState: a,
-		changeFlag:          true,
-		blocksSeen:          make([]bool, flowInfo.NumBlocks),
-		errors:              map[ssa.Node]error{},
-		summary:             sm,
-		deferStacks:         sm.deferStacks,
-		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
-		instrPrev:           make([]map[IndexT]bool, flowInfo.NumInstructions),
-		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
-		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
-		shouldTrack:         sm.shouldTrack,
-		postBlockCallback:   sm.postBlockCallBack,
-		eagerInputPaths:     eagerInputPaths,
+		flowInfo:             flowInfo,
+		parentAnalyzerState:  a,
+		changeFlag:           true,
+		blocksSeen:           make([]bool, flowInfo.NumBlocks),
+		errors:               map[ssa.Node]error{},
+		summary:              sm,
+		deferStacks:          sm.deferStacks,
+		paths:                make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
+		instrPrev:            make([]map[IndexT]bool, flowInfo.NumInstructions),
+		paramAliases:         make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
+		freeVarAliases:       make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
+		shouldTrack:          sm.shouldTrack,
+		postBlockCallback:    sm.postBlockCallBack,
+		eagerInputPaths:      eagerInputPaths,
+		accessPathProvenance: make(map[accessPathProvenanceFact]map[accessPathProvenanceEdge]struct{}),
 	}
 
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()
 	if !eagerInputPaths {
+		// Reconstruction indexes are unnecessary in eager mode because those marks already carry
+		// their source paths.
 		state.indexReconstructionInstructions()
 	}
 	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
+	//
+	// Access-path provenance recording occurs inside those transfer functions but cannot set
+	// changeFlag or schedule another block iteration.
 	if err := lang.RunForwardIterative(ctx, state, sm.Parent); err != nil {
 		return time.Since(start), int(flowInfo.NumValues), err
 	}
@@ -156,10 +175,14 @@ func runIntraProcedural(
 	if state.reconstructPaths {
 		state.reconstructionCache = make(map[reconstructionQuery][]MarkWithAccessPath)
 	}
+
 	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
 	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
 	// translated into a dataflow graph, with special attention for closures.
 	// Next, we build the edges of the summary. The functions for edge building are in this file
+	//
+	// Delaying edge construction until now ensures reconstructed source labels cannot re-enter the
+	// frozen lattice or affect convergence.
 	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
 	// Synchronize the edges of global variables
 	sm.SyncGlobals()

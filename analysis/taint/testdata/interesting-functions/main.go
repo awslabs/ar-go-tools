@@ -56,8 +56,9 @@ func testConcurrency() {
 	concurrent(source())
 }
 
-// Fanout is an interface implemented by 11 concrete types, so a call through Fanout with a
-// tainted receiver exceeds the >10-callee interface-fanout threshold.
+// Fanout is an interface implemented by 20 concrete types, so a call through Fanout with a
+// tainted receiver exceeds the >10-callee interface-fanout threshold and gives timeout tests
+// enough deterministic intra-procedural work to exceed a 1ms deadline.
 type Fanout interface {
 	F(string) string
 }
@@ -73,6 +74,15 @@ type impl7 struct{}
 type impl8 struct{}
 type impl9 struct{}
 type impl10 struct{}
+type impl11 struct{}
+type impl12 struct{}
+type impl13 struct{}
+type impl14 struct{}
+type impl15 struct{}
+type impl16 struct{}
+type impl17 struct{}
+type impl18 struct{}
+type impl19 struct{}
 
 func (impl0) F(s string) string  { return s }
 func (impl1) F(s string) string  { return s }
@@ -85,6 +95,15 @@ func (impl7) F(s string) string  { return s }
 func (impl8) F(s string) string  { return s }
 func (impl9) F(s string) string  { return s }
 func (impl10) F(s string) string { return s }
+func (impl11) F(s string) string { return s }
+func (impl12) F(s string) string { return s }
+func (impl13) F(s string) string { return s }
+func (impl14) F(s string) string { return s }
+func (impl15) F(s string) string { return s }
+func (impl16) F(s string) string { return s }
+func (impl17) F(s string) string { return s }
+func (impl18) F(s string) string { return s }
+func (impl19) F(s string) string { return s }
 
 func callFanout(f Fanout, s string) string {
 	return f.F(s)
@@ -110,6 +129,15 @@ func (impl7) G(s string) string  { return s }
 func (impl8) G(s string) string  { return s }
 func (impl9) G(s string) string  { return s }
 func (impl10) G(s string) string { return s }
+func (impl11) G(s string) string { return s }
+func (impl12) G(s string) string { return s }
+func (impl13) G(s string) string { return s }
+func (impl14) G(s string) string { return s }
+func (impl15) G(s string) string { return s }
+func (impl16) G(s string) string { return s }
+func (impl17) G(s string) string { return s }
+func (impl18) G(s string) string { return s }
+func (impl19) G(s string) string { return s }
 
 func callWideFanout(f WideFanout, s string) string {
 	return f.F(s)
@@ -117,13 +145,15 @@ func callWideFanout(f WideFanout, s string) string {
 
 func testInterfaceFanout(which int) {
 	impls := []Fanout{impl0{}, impl1{}, impl2{}, impl3{}, impl4{}, impl5{}, impl6{}, impl7{},
-		impl8{}, impl9{}, impl10{}}
+		impl8{}, impl9{}, impl10{}, impl11{}, impl12{}, impl13{}, impl14{}, impl15{}, impl16{},
+		impl17{}, impl18{}, impl19{}}
 	sink(callFanout(impls[which], source()))
 }
 
 func testWideInterfaceFanout(which int) {
 	impls := []WideFanout{impl0{}, impl1{}, impl2{}, impl3{}, impl4{}, impl5{}, impl6{}, impl7{},
-		impl8{}, impl9{}, impl10{}}
+		impl8{}, impl9{}, impl10{}, impl11{}, impl12{}, impl13{}, impl14{}, impl15{}, impl16{},
+		impl17{}, impl18{}, impl19{}}
 	sink(callWideFanout(impls[which], source()))
 }
 

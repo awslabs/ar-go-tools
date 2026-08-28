@@ -209,24 +209,29 @@ def cmd_run_check(args: argparse.Namespace) -> None:
                 label=f"run-check ({args.repo}, {args.variant}, {kind})",
                 timeout=CHECK_TIMEOUT_SECONDS,
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            console.print(f"[red]run-check {kind} failed ({e}); null result[/red]")
-            merged.setdefault(kind, None)
+        except Exception as e:  # noqa: BLE001
+            console.print(f"[red]run-check {kind} failed ({e}); error result[/red]")
+            merged[kind] = _failure_record(e, log_file)
             continue
         report_path = _find_check_report(log_file)
         if not report_path:
-            sys.exit(1)
+            error = RuntimeError("argot check completed without producing check-report.json")
+            merged[kind] = _failure_record(error, log_file)
+            continue
         total_duration += duration
         for target, results in json.loads(report_path.read_text()).items():
             merged[f"{target}:{kind}"] = results
 
     if not found:
-        console.print(
-            f"[red]No split configs for {args.repo}/{args.variant}; "
-            "ensure LLM summaries exist before checking variant=llm[/red]"
+        message = (
+            f"No split configs for {args.repo}/{args.variant}; "
+            "ensure LLM summaries exist before checking variant=llm"
         )
-        sys.exit(1)
+        console.print(f"[red]{message}[/red]")
+        merged["configuration"] = _failure_record(RuntimeError(message))
     out.write_text(json.dumps(merged, indent=2))
+    if not found:
+        sys.exit(1)
     console.print(f"[green]Wrote {out}[/green] ({total_duration:.1f}s)")
 
 
@@ -259,15 +264,17 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
                 timeout=CHECK_TIMEOUT_SECONDS,
                 memory_limit_bytes=CONSTRUCTIVE_MEMORY_LIMIT_BYTES,
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        except Exception as e:  # noqa: BLE001
             console.print(
-                f"[red]run-constructive {item.id} failed ({e}); null result[/red]"
+                f"[red]run-constructive {item.id} failed ({e}); error result[/red]"
             )
-            merged.setdefault(item.id, None)
+            merged[item.id] = _failure_record(e, log_file)
             continue
         report_path = _find_check_report(log_file)
         if not report_path:
-            sys.exit(1)
+            error = RuntimeError("argot check completed without producing check-report.json")
+            merged[item.id] = _failure_record(error, log_file)
+            continue
         total_duration += duration
         for target, results in json.loads(report_path.read_text()).items():
             existing = merged.get(target)
@@ -583,7 +590,10 @@ def _run_eval_checker(
 
 def _check_report_duration(report: Dict[str, Any]) -> float:
     total_ns = sum(
-        r.get("Elapsed", 0) for results in report.values() for r in (results or [])
+        r.get("Elapsed", 0)
+        for results in report.values()
+        if isinstance(results, list)
+        for r in results
     )
     return round(total_ns / 1e9, 2)
 
@@ -810,6 +820,40 @@ def _write_manifest(run: RunPaths, manifest: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
+class MemoryLimitExceeded(subprocess.CalledProcessError):
+    pass
+
+
+def _failure_record(
+    error: BaseException,
+    log_file: Optional[Path] = None,
+) -> Dict[str, Any]:
+    if isinstance(error, subprocess.TimeoutExpired):
+        record: Dict[str, Any] = {
+            "error": "timeout",
+            "message": f"exceeded {error.timeout} second timeout",
+            "timeout_seconds": error.timeout,
+        }
+    elif isinstance(error, MemoryLimitExceeded):
+        record = {
+            "error": "oom",
+            "message": "process was killed after exceeding its memory limit",
+            "returncode": error.returncode,
+        }
+    elif isinstance(error, subprocess.CalledProcessError):
+        record = {
+            "error": "process_exit",
+            "message": f"process exited with status {error.returncode}",
+            "returncode": error.returncode,
+        }
+    else:
+        record = {"error": type(error).__name__, "message": str(error)}
+
+    if log_file is not None:
+        record["log_file"] = str(log_file)
+    return record
+
+
 def _base_config(repo: str) -> Dict[str, Any]:
     target = yaml.safe_load((ARGOT_CONFIGS_DIR / repo / "target.yaml").read_text())
     cfg: Dict[str, Any] = {
@@ -972,7 +1016,10 @@ def _run_subprocess(
         console.print(
             f"[red]{label} failed (exit {proc.returncode}); see {log_file}[/red]"
         )
-        raise subprocess.CalledProcessError(proc.returncode, cmd)
+        error_type = (
+            MemoryLimitExceeded if proc.returncode in (137, -9) else subprocess.CalledProcessError
+        )
+        raise error_type(proc.returncode, cmd)
     console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")
     return duration
 

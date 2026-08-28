@@ -82,8 +82,8 @@ func TestInterestingFunctionsInterfaceFanout(t *testing.T) {
 			len(sig.InterfaceFanouts), sig.InterfaceFanouts)
 	}
 	fanout := sig.InterfaceFanouts[0]
-	if fanout.NumImpls != 11 {
-		t.Errorf("expected 11 implementations, got %d", fanout.NumImpls)
+	if fanout.NumImpls != 20 {
+		t.Errorf("expected 20 implementations, got %d", fanout.NumImpls)
 	}
 	if fanout.MethodName != "F" {
 		t.Errorf("expected method name F, got %s", fanout.MethodName)

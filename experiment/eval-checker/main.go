@@ -31,6 +31,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -344,29 +345,51 @@ type rawCheckResult struct {
 	Elapsed     time.Duration
 }
 
-// checkReport maps a target name (build target, not summary name) to its results, or null if
-// argot check failed to analyze that target at all.
-type checkReport map[string][]rawCheckResult
+type reportError struct {
+	Error          string `json:"error"`
+	Message        string `json:"message"`
+	ReturnCode     *int   `json:"returncode,omitempty"`
+	TimeoutSeconds *int   `json:"timeout_seconds,omitempty"`
+	LogFile        string `json:"log_file,omitempty"`
+}
 
-func loadCheckReport(path string) (map[string][]rawCheckResult, []string, error) {
+func loadCheckReport(path string) (map[string][]rawCheckResult, map[string]reportError, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	var raw map[string]*[]rawCheckResult
+	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	report := make(map[string][]rawCheckResult, len(raw))
-	var nullTargets []string
-	for name, results := range raw {
-		if results == nil {
-			nullTargets = append(nullTargets, name)
-			continue
+	errors := make(map[string]reportError)
+	for name, value := range raw {
+		trimmed := bytes.TrimSpace(value)
+		if len(trimmed) == 0 {
+			return nil, nil, fmt.Errorf("parsing %s: target %q has an empty result", path, name)
 		}
-		report[name] = *results
+		switch trimmed[0] {
+		case '[':
+			var results []rawCheckResult
+			if err := json.Unmarshal(trimmed, &results); err != nil {
+				return nil, nil, fmt.Errorf("parsing %s target %q: %w", path, name, err)
+			}
+			report[name] = results
+		case '{':
+			var resultError reportError
+			if err := json.Unmarshal(trimmed, &resultError); err != nil {
+				return nil, nil, fmt.Errorf("parsing %s error target %q: %w", path, name, err)
+			}
+			if resultError.Error == "" {
+				return nil, nil, fmt.Errorf("parsing %s: target %q object has no error field", path, name)
+			}
+			errors[name] = resultError
+		default:
+			return nil, nil, fmt.Errorf("parsing %s: target %q must be a result array or error object", path, name)
+		}
 	}
-	return report, nullTargets, nil
+	return report, errors, nil
 }
 
 func loadEvaluationInputs(
@@ -382,32 +405,38 @@ func loadEvaluationInputs(
 		entries = append(entries, parsed...)
 	}
 
-	report, nullTargets, err := loadCheckReport(checkReportPath)
+	report, reportErrors, err := loadCheckReport(checkReportPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	warnNullTargets(nullTargets, "check")
+	if err := checkReportErrors(reportErrors, "check"); err != nil {
+		return nil, nil, err
+	}
 	return entries, groupBySummaryName(report), nil
 }
 
 func loadConstructiveResults(path string) (map[string]rawCheckResult, error) {
-	report, nullTargets, err := loadCheckReport(path)
+	report, reportErrors, err := loadCheckReport(path)
 	if err != nil {
 		return nil, err
 	}
-	warnNullTargets(nullTargets, "constructive")
+	if err := checkReportErrors(reportErrors, "constructive"); err != nil {
+		return nil, err
+	}
 	return groupByFunc(report), nil
 }
 
-func warnNullTargets(targets []string, reportKind string) {
-	for _, name := range targets {
-		fmt.Fprintf(
-			os.Stderr,
-			"warning: target %q has no results in the %s report; see the .log file\n",
-			name,
+func checkReportErrors(errors map[string]reportError, reportKind string) error {
+	for name, resultError := range errors {
+		return fmt.Errorf(
+			"%s target %q failed (%s): %s",
 			reportKind,
+			name,
+			resultError.Error,
+			resultError.Message,
 		)
 	}
+	return nil
 }
 
 // groupBySummaryName groups a check-report.json's flat per-target result lists by SummaryName.
