@@ -1,0 +1,148 @@
+{
+  "rq": "llm-effectiveness",
+  "repo": "sample",
+  "targets": [
+    {
+      "summary_name": "(*crypto/ecdsa.PrivateKey).Sign",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/ecdsa.PrivateKey).Sign",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 3
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 2
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P384Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P384Element).Square",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 2
+        }
+      ]
+    },
+    {
+      "summary_name": "(*encoding/base64.Encoding).EncodeToString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*encoding/base64.Encoding).EncodeToString",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "error",
+          "llm_flow_count": 1
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/cipher.NewGCM",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/cipher.NewGCM",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "error",
+          "llm_flow_count": 1
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.GenerateKey",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.GenerateKey",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 7
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.MarshalCompressed",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.MarshalCompressed",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "soundy",
+          "llm_flow_count": 3,
+          "constructive_flow_count": 5,
+          "excess_flow_count": 3
+        }
+      ]
+    },
+    {
+      "summary_name": "encoding/hex.DecodeString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "encoding/hex.DecodeString",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "sound",
+          "llm_flow_count": 2,
+          "constructive_flow_count": 2,
+          "excess_flow_count": 0
+        }
+      ]
+    },
+    {
+      "summary_name": "github.com/aws/aws-sdk-go/aws.String",
+      "kind": "function",
+      "results": [
+        {
+          "name": "github.com/aws/aws-sdk-go/aws.String",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "sound",
+          "llm_flow_count": 1,
+          "constructive_flow_count": 1,
+          "excess_flow_count": 0
+        }
+      ]
+    },
+    {
+      "summary_name": "io/ioutil.ReadFile",
+      "kind": "function",
+      "results": [
+        {
+          "name": "io/ioutil.ReadFile",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "soundy",
+          "llm_flow_count": 2,
+          "constructive_flow_count": 2,
+          "excess_flow_count": 0
+        }
+      ]
+    },
+    {
+      "summary_name": "(fmt.Stringer).String",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(fmt.Stringer).String",
+          "reachable_implementation_count": 56,
+          "checker_soundness": "soundy",
+          "llm_flow_count": 1,
+          "constructive_flow_count": 1,
+          "excess_flow_count": 0
+        }
+      ]
+    }
+  ]
+}

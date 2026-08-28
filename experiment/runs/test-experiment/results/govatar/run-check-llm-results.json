@@ -1,0 +1,639 @@
+{
+  "govatar-cli:functions": [
+    {
+      "Func": "(*text/template.Template).Execute",
+      "SummaryName": "(*text/template.Template).Execute",
+      "Want": {
+        "!arg 1": [
+          "!arg 0",
+          "!ret 0"
+        ],
+        "!receiver": [
+          "!arg 0",
+          "!ret 0"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "!arg <data 1> -> !receiver",
+          "!arg <wr 0> -> !receiver",
+          "!arg <wr 0> -> !ret 0"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41259,
+              "Line": 1242,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41390,
+              "Line": 1248,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77121,
+              "Line": 2455,
+              "Column": 46
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41259,
+              "Line": 1242,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41390,
+              "Line": 1248,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77121,
+              "Line": 2455,
+              "Column": 46
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77216,
+              "Line": 2457,
+              "Column": 19
+            }
+          ],
+          "HigherOrderVals": [
+            {
+              "Path": "t.common.execFuncs.typ_.Equal",
+              "Type": "func(unsafe.Pointer, unsafe.Pointer) bool"
+            }
+          ]
+        }
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "immutability": 2
+      },
+      "Elapsed": 3897630
+    },
+    {
+      "Func": "(*text/tabwriter.Writer).Write",
+      "SummaryName": "(*text/tabwriter.Writer).Write",
+      "Want": {
+        "!arg 0": [
+          "!receiver",
+          "!ret 0"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "!receiver -> !ret 0",
+          "!receiver -> !ret 1",
+          "!arg <buf 0> -> !ret 1"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "immutability": 1
+      },
+      "Elapsed": 46161099
+    },
+    {
+      "Func": "(*text/template/parse.Tree).Parse",
+      "SummaryName": "(*text/template/parse.Tree).Parse",
+      "Want": {
+        "!arg 0": [
+          "!arg <treeSet 3>",
+          "!ret 1",
+          "(!receiver).Root",
+          "(!receiver).text"
+        ],
+        "!receiver": [
+          "!arg <treeSet 3>",
+          "!ret 0",
+          "!ret 1"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "!arg <funcs 4> -> (!receiver).Mode",
+          "!arg <funcs 4> -> (!receiver).Name",
+          "!arg <funcs 4> -> (!receiver).ParseName",
+          "!arg <funcs 4> -> (!receiver).Root",
+          "!arg <funcs 4> -> (!receiver).actionLine",
+          "!arg <funcs 4> -> (!receiver).funcs",
+          "!arg <funcs 4> -> (!receiver).lex",
+          "!arg <funcs 4> -> (!receiver).peekCount",
+          "!arg <funcs 4> -> (!receiver).rangeDepth",
+          "!arg <funcs 4> -> (!receiver).stackDepth",
+          "!arg <funcs 4> -> (!receiver).text",
+          "!arg <funcs 4> -> (!receiver).token",
+          "!arg <funcs 4> -> (!receiver).treeSet",
+          "!arg <funcs 4> -> (!receiver).vars",
+          "!arg <funcs 4> -> !arg <treeSet 3>",
+          "!arg <funcs 4> -> !ret 0",
+          "!arg <funcs 4> -> !ret 1",
+          "!arg <leftDelim 1> -> !arg <funcs 4>",
+          "!arg <leftDelim 1> -> (!receiver).Mode",
+          "!arg <leftDelim 1> -> (!receiver).Name",
+          "!arg <leftDelim 1> -> (!receiver).ParseName",
+          "!arg <leftDelim 1> -> (!receiver).Root",
+          "!arg <leftDelim 1> -> (!receiver).actionLine",
+          "!arg <leftDelim 1> -> (!receiver).funcs",
+          "!arg <leftDelim 1> -> (!receiver).lex",
+          "!arg <leftDelim 1> -> (!receiver).peekCount",
+          "!arg <leftDelim 1> -> (!receiver).rangeDepth",
+          "!arg <leftDelim 1> -> (!receiver).stackDepth",
+          "!arg <leftDelim 1> -> (!receiver).text",
+          "!arg <leftDelim 1> -> (!receiver).token",
+          "!arg <leftDelim 1> -> (!receiver).treeSet",
+          "!arg <leftDelim 1> -> (!receiver).vars",
+          "!arg <leftDelim 1> -> !arg <treeSet 3>",
+          "!arg <leftDelim 1> -> !ret 0",
+          "!arg <leftDelim 1> -> !ret 1",
+          "!arg <rightDelim 2> -> !arg <funcs 4>",
+          "!arg <rightDelim 2> -> (!receiver).Mode",
+          "!arg <rightDelim 2> -> (!receiver).Name",
+          "!arg <rightDelim 2> -> (!receiver).ParseName",
+          "!arg <rightDelim 2> -> (!receiver).Root",
+          "!arg <rightDelim 2> -> (!receiver).actionLine",
+          "!arg <rightDelim 2> -> (!receiver).funcs",
+          "!arg <rightDelim 2> -> (!receiver).lex",
+          "!arg <rightDelim 2> -> (!receiver).peekCount",
+          "!arg <rightDelim 2> -> (!receiver).rangeDepth",
+          "!arg <rightDelim 2> -> (!receiver).stackDepth",
+          "!arg <rightDelim 2> -> (!receiver).text",
+          "!arg <rightDelim 2> -> (!receiver).token",
+          "!arg <rightDelim 2> -> (!receiver).treeSet",
+          "!arg <rightDelim 2> -> (!receiver).vars",
+          "!arg <rightDelim 2> -> !arg <treeSet 3>",
+          "!arg <rightDelim 2> -> !ret 0",
+          "!arg <rightDelim 2> -> !ret 1",
+          "(!receiver).Mode -> !arg <funcs 4>",
+          "(!receiver).Mode -> (!receiver).Name",
+          "(!receiver).Mode -> (!receiver).ParseName",
+          "(!receiver).Mode -> (!receiver).Root",
+          "(!receiver).Mode -> (!receiver).actionLine",
+          "(!receiver).Mode -> (!receiver).funcs",
+          "(!receiver).Mode -> (!receiver).lex",
+          "(!receiver).Mode -> (!receiver).peekCount",
+          "(!receiver).Mode -> (!receiver).rangeDepth",
+          "(!receiver).Mode -> (!receiver).stackDepth",
+          "(!receiver).Mode -> (!receiver).text",
+          "(!receiver).Mode -> (!receiver).token",
+          "(!receiver).Mode -> (!receiver).treeSet",
+          "(!receiver).Mode -> (!receiver).vars",
+          "(!receiver).Mode -> !arg <treeSet 3>",
+          "(!receiver).Mode -> !ret 0",
+          "(!receiver).Mode -> !ret 1",
+          "(!receiver).Name -> !arg <funcs 4>",
+          "(!receiver).Name -> (!receiver).Mode",
+          "(!receiver).Name -> (!receiver).ParseName",
+          "(!receiver).Name -> (!receiver).Root",
+          "(!receiver).Name -> (!receiver).actionLine",
+          "(!receiver).Name -> (!receiver).funcs",
+          "(!receiver).Name -> (!receiver).lex",
+          "(!receiver).Name -> (!receiver).peekCount",
+          "(!receiver).Name -> (!receiver).rangeDepth",
+          "(!receiver).Name -> (!receiver).stackDepth",
+          "(!receiver).Name -> (!receiver).text",
+          "(!receiver).Name -> (!receiver).token",
+          "(!receiver).Name -> (!receiver).treeSet",
+          "(!receiver).Name -> (!receiver).vars",
+          "(!receiver).Name -> !arg <treeSet 3>",
+          "(!receiver).Name -> !ret 0",
+          "(!receiver).Name -> !ret 1",
+          "(!receiver).ParseName -> !arg <funcs 4>",
+          "(!receiver).ParseName -> (!receiver).Mode",
+          "(!receiver).ParseName -> (!receiver).Name",
+          "(!receiver).ParseName -> (!receiver).Root",
+          "(!receiver).ParseName -> (!receiver).actionLine",
+          "(!receiver).ParseName -> (!receiver).funcs",
+          "(!receiver).ParseName -> (!receiver).lex",
+          "(!receiver).ParseName -> (!receiver).peekCount",
+          "(!receiver).ParseName -> (!receiver).rangeDepth",
+          "(!receiver).ParseName -> (!receiver).stackDepth",
+          "(!receiver).ParseName -> (!receiver).text",
+          "(!receiver).ParseName -> (!receiver).token",
+          "(!receiver).ParseName -> (!receiver).treeSet",
+          "(!receiver).ParseName -> (!receiver).vars",
+          "(!receiver).ParseName -> !arg <treeSet 3>",
+          "(!receiver).ParseName -> !ret 0",
+          "(!receiver).ParseName -> !ret 1",
+          "(!receiver).Root -> !arg <funcs 4>",
+          "(!receiver).Root -> (!receiver).Mode",
+          "(!receiver).Root -> (!receiver).Name",
+          "(!receiver).Root -> (!receiver).ParseName",
+          "(!receiver).Root -> (!receiver).actionLine",
+          "(!receiver).Root -> (!receiver).funcs",
+          "(!receiver).Root -> (!receiver).lex",
+          "(!receiver).Root -> (!receiver).peekCount",
+          "(!receiver).Root -> (!receiver).rangeDepth",
+          "(!receiver).Root -> (!receiver).stackDepth",
+          "(!receiver).Root -> (!receiver).text",
+          "(!receiver).Root -> (!receiver).token",
+          "(!receiver).Root -> (!receiver).treeSet",
+          "(!receiver).Root -> (!receiver).vars",
+          "(!receiver).Root -> !arg <treeSet 3>",
+          "(!receiver).Root -> !ret 0",
+          "(!receiver).Root -> !ret 1",
+          "(!receiver).actionLine -> !arg <funcs 4>",
+          "(!receiver).actionLine -> (!receiver).Mode",
+          "(!receiver).actionLine -> (!receiver).Name",
+          "(!receiver).actionLine -> (!receiver).ParseName",
+          "(!receiver).actionLine -> (!receiver).Root",
+          "(!receiver).actionLine -> (!receiver).funcs",
+          "(!receiver).actionLine -> (!receiver).lex",
+          "(!receiver).actionLine -> (!receiver).peekCount",
+          "(!receiver).actionLine -> (!receiver).rangeDepth",
+          "(!receiver).actionLine -> (!receiver).stackDepth",
+          "(!receiver).actionLine -> (!receiver).text",
+          "(!receiver).actionLine -> (!receiver).token",
+          "(!receiver).actionLine -> (!receiver).treeSet",
+          "(!receiver).actionLine -> (!receiver).vars",
+          "(!receiver).actionLine -> !arg <treeSet 3>",
+          "(!receiver).actionLine -> !ret 0",
+          "(!receiver).actionLine -> !ret 1",
+          "(!receiver).funcs -> !arg <funcs 4>",
+          "(!receiver).funcs -> (!receiver).Mode",
+          "(!receiver).funcs -> (!receiver).Name",
+          "(!receiver).funcs -> (!receiver).ParseName",
+          "(!receiver).funcs -> (!receiver).Root",
+          "(!receiver).funcs -> (!receiver).actionLine",
+          "(!receiver).funcs -> (!receiver).lex",
+          "(!receiver).funcs -> (!receiver).peekCount",
+          "(!receiver).funcs -> (!receiver).rangeDepth",
+          "(!receiver).funcs -> (!receiver).stackDepth",
+          "(!receiver).funcs -> (!receiver).text",
+          "(!receiver).funcs -> (!receiver).token",
+          "(!receiver).funcs -> (!receiver).treeSet",
+          "(!receiver).funcs -> (!receiver).vars",
+          "(!receiver).funcs -> !arg <treeSet 3>",
+          "(!receiver).funcs -> !ret 0",
+          "(!receiver).funcs -> !ret 1",
+          "(!receiver).lex -> !arg <funcs 4>",
+          "(!receiver).lex -> (!receiver).Mode",
+          "(!receiver).lex -> (!receiver).Name",
+          "(!receiver).lex -> (!receiver).ParseName",
+          "(!receiver).lex -> (!receiver).Root",
+          "(!receiver).lex -> (!receiver).actionLine",
+          "(!receiver).lex -> (!receiver).funcs",
+          "(!receiver).lex -> (!receiver).peekCount",
+          "(!receiver).lex -> (!receiver).rangeDepth",
+          "(!receiver).lex -> (!receiver).stackDepth",
+          "(!receiver).lex -> (!receiver).text",
+          "(!receiver).lex -> (!receiver).token",
+          "(!receiver).lex -> (!receiver).treeSet",
+          "(!receiver).lex -> (!receiver).vars",
+          "(!receiver).lex -> !arg <treeSet 3>",
+          "(!receiver).lex -> !ret 0",
+          "(!receiver).lex -> !ret 1",
+          "(!receiver).peekCount -> !arg <funcs 4>",
+          "(!receiver).peekCount -> (!receiver).Mode",
+          "(!receiver).peekCount -> (!receiver).Name",
+          "(!receiver).peekCount -> (!receiver).ParseName",
+          "(!receiver).peekCount -> (!receiver).Root",
+          "(!receiver).peekCount -> (!receiver).actionLine",
+          "(!receiver).peekCount -> (!receiver).funcs",
+          "(!receiver).peekCount -> (!receiver).lex",
+          "(!receiver).peekCount -> (!receiver).rangeDepth",
+          "(!receiver).peekCount -> (!receiver).stackDepth",
+          "(!receiver).peekCount -> (!receiver).text",
+          "(!receiver).peekCount -> (!receiver).token",
+          "(!receiver).peekCount -> (!receiver).treeSet",
+          "(!receiver).peekCount -> (!receiver).vars",
+          "(!receiver).peekCount -> !arg <treeSet 3>",
+          "(!receiver).peekCount -> !ret 0",
+          "(!receiver).peekCount -> !ret 1",
+          "(!receiver).rangeDepth -> !arg <funcs 4>",
+          "(!receiver).rangeDepth -> (!receiver).Mode",
+          "(!receiver).rangeDepth -> (!receiver).Name",
+          "(!receiver).rangeDepth -> (!receiver).ParseName",
+          "(!receiver).rangeDepth -> (!receiver).Root",
+          "(!receiver).rangeDepth -> (!receiver).actionLine",
+          "(!receiver).rangeDepth -> (!receiver).funcs",
+          "(!receiver).rangeDepth -> (!receiver).lex",
+          "(!receiver).rangeDepth -> (!receiver).peekCount",
+          "(!receiver).rangeDepth -> (!receiver).stackDepth",
+          "(!receiver).rangeDepth -> (!receiver).text",
+          "(!receiver).rangeDepth -> (!receiver).token",
+          "(!receiver).rangeDepth -> (!receiver).treeSet",
+          "(!receiver).rangeDepth -> (!receiver).vars",
+          "(!receiver).rangeDepth -> !arg <treeSet 3>",
+          "(!receiver).rangeDepth -> !ret 0",
+          "(!receiver).rangeDepth -> !ret 1",
+          "(!receiver).stackDepth -> !arg <funcs 4>",
+          "(!receiver).stackDepth -> (!receiver).Mode",
+          "(!receiver).stackDepth -> (!receiver).Name",
+          "(!receiver).stackDepth -> (!receiver).ParseName",
+          "(!receiver).stackDepth -> (!receiver).Root",
+          "(!receiver).stackDepth -> (!receiver).actionLine",
+          "(!receiver).stackDepth -> (!receiver).funcs",
+          "(!receiver).stackDepth -> (!receiver).lex",
+          "(!receiver).stackDepth -> (!receiver).peekCount",
+          "(!receiver).stackDepth -> (!receiver).rangeDepth",
+          "(!receiver).stackDepth -> (!receiver).text",
+          "(!receiver).stackDepth -> (!receiver).token",
+          "(!receiver).stackDepth -> (!receiver).treeSet",
+          "(!receiver).stackDepth -> (!receiver).vars",
+          "(!receiver).stackDepth -> !arg <treeSet 3>",
+          "(!receiver).stackDepth -> !ret 0",
+          "(!receiver).stackDepth -> !ret 1",
+          "(!receiver).text -> !arg <funcs 4>",
+          "(!receiver).text -> (!receiver).Mode",
+          "(!receiver).text -> (!receiver).Name",
+          "(!receiver).text -> (!receiver).ParseName",
+          "(!receiver).text -> (!receiver).Root",
+          "(!receiver).text -> (!receiver).actionLine",
+          "(!receiver).text -> (!receiver).funcs",
+          "(!receiver).text -> (!receiver).lex",
+          "(!receiver).text -> (!receiver).peekCount",
+          "(!receiver).text -> (!receiver).rangeDepth",
+          "(!receiver).text -> (!receiver).stackDepth",
+          "(!receiver).text -> (!receiver).token",
+          "(!receiver).text -> (!receiver).treeSet",
+          "(!receiver).text -> (!receiver).vars",
+          "(!receiver).text -> !arg <treeSet 3>",
+          "(!receiver).text -> !ret 0",
+          "(!receiver).text -> !ret 1",
+          "(!receiver).token -> !arg <funcs 4>",
+          "(!receiver).token -> (!receiver).Mode",
+          "(!receiver).token -> (!receiver).Name",
+          "(!receiver).token -> (!receiver).ParseName",
+          "(!receiver).token -> (!receiver).Root",
+          "(!receiver).token -> (!receiver).actionLine",
+          "(!receiver).token -> (!receiver).funcs",
+          "(!receiver).token -> (!receiver).lex",
+          "(!receiver).token -> (!receiver).peekCount",
+          "(!receiver).token -> (!receiver).rangeDepth",
+          "(!receiver).token -> (!receiver).stackDepth",
+          "(!receiver).token -> (!receiver).text",
+          "(!receiver).token -> (!receiver).treeSet",
+          "(!receiver).token -> (!receiver).vars",
+          "(!receiver).token -> !arg <treeSet 3>",
+          "(!receiver).token -> !ret 0",
+          "(!receiver).token -> !ret 1",
+          "(!receiver).treeSet -> !arg <funcs 4>",
+          "(!receiver).treeSet -> (!receiver).Mode",
+          "(!receiver).treeSet -> (!receiver).Name",
+          "(!receiver).treeSet -> (!receiver).ParseName",
+          "(!receiver).treeSet -> (!receiver).Root",
+          "(!receiver).treeSet -> (!receiver).actionLine",
+          "(!receiver).treeSet -> (!receiver).funcs",
+          "(!receiver).treeSet -> (!receiver).lex",
+          "(!receiver).treeSet -> (!receiver).peekCount",
+          "(!receiver).treeSet -> (!receiver).rangeDepth",
+          "(!receiver).treeSet -> (!receiver).stackDepth",
+          "(!receiver).treeSet -> (!receiver).text",
+          "(!receiver).treeSet -> (!receiver).token",
+          "(!receiver).treeSet -> (!receiver).vars",
+          "(!receiver).treeSet -> !arg <treeSet 3>",
+          "(!receiver).treeSet -> !ret 0",
+          "(!receiver).treeSet -> !ret 1",
+          "(!receiver).vars -> !arg <funcs 4>",
+          "(!receiver).vars -> (!receiver).Mode",
+          "(!receiver).vars -> (!receiver).Name",
+          "(!receiver).vars -> (!receiver).ParseName",
+          "(!receiver).vars -> (!receiver).Root",
+          "(!receiver).vars -> (!receiver).actionLine",
+          "(!receiver).vars -> (!receiver).funcs",
+          "(!receiver).vars -> (!receiver).lex",
+          "(!receiver).vars -> (!receiver).peekCount",
+          "(!receiver).vars -> (!receiver).rangeDepth",
+          "(!receiver).vars -> (!receiver).stackDepth",
+          "(!receiver).vars -> (!receiver).text",
+          "(!receiver).vars -> (!receiver).token",
+          "(!receiver).vars -> (!receiver).treeSet",
+          "(!receiver).vars -> !arg <treeSet 3>",
+          "(!receiver).vars -> !ret 0",
+          "(!receiver).vars -> !ret 1",
+          "!arg <text 0> -> !arg <funcs 4>",
+          "!arg <text 0> -> (!receiver).Mode",
+          "!arg <text 0> -> (!receiver).Name",
+          "!arg <text 0> -> (!receiver).ParseName",
+          "!arg <text 0> -> (!receiver).actionLine",
+          "!arg <text 0> -> (!receiver).funcs",
+          "!arg <text 0> -> (!receiver).lex",
+          "!arg <text 0> -> (!receiver).peekCount",
+          "!arg <text 0> -> (!receiver).rangeDepth",
+          "!arg <text 0> -> (!receiver).stackDepth",
+          "!arg <text 0> -> (!receiver).token",
+          "!arg <text 0> -> (!receiver).treeSet",
+          "!arg <text 0> -> (!receiver).vars",
+          "!arg <text 0> -> !ret 0",
+          "!arg <treeSet 3> -> !arg <funcs 4>",
+          "!arg <treeSet 3> -> (!receiver).Mode",
+          "!arg <treeSet 3> -> (!receiver).Name",
+          "!arg <treeSet 3> -> (!receiver).ParseName",
+          "!arg <treeSet 3> -> (!receiver).Root",
+          "!arg <treeSet 3> -> (!receiver).actionLine",
+          "!arg <treeSet 3> -> (!receiver).funcs",
+          "!arg <treeSet 3> -> (!receiver).lex",
+          "!arg <treeSet 3> -> (!receiver).peekCount",
+          "!arg <treeSet 3> -> (!receiver).rangeDepth",
+          "!arg <treeSet 3> -> (!receiver).stackDepth",
+          "!arg <treeSet 3> -> (!receiver).text",
+          "!arg <treeSet 3> -> (!receiver).token",
+          "!arg <treeSet 3> -> (!receiver).treeSet",
+          "!arg <treeSet 3> -> (!receiver).vars",
+          "!arg <treeSet 3> -> !ret 0",
+          "!arg <treeSet 3> -> !ret 1"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1613,
+              "Line": 47,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1596,
+              "Line": 47,
+              "Column": 22
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1613,
+              "Line": 47,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1596,
+              "Line": 47,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20453,
+              "Line": 759,
+              "Column": 32
+            }
+          ]
+        },
+        "DataflowFeatures": {
+          "RecoverUsages": [
+            {
+              "Filename": "/usr/local/go/src/text/template/parse/parse.go",
+              "Offset": 7240,
+              "Line": 259,
+              "Column": 2
+            }
+          ],
+          "NonLocalBoundLabelUsages": [
+            {
+              "Filename": "/usr/local/go/src/text/template/parse/parse.go",
+              "Offset": 7423,
+              "Line": 267,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/local/go/src/text/template/parse/parse.go",
+              "Offset": 7375,
+              "Line": 263,
+              "Column": 4
+            },
+            {
+              "Filename": "/usr/local/go/src/text/template/parse/parse.go",
+              "Offset": 7265,
+              "Line": 260,
+              "Column": 4
+            }
+          ]
+        }
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "types": 54
+      },
+      "Elapsed": 445963394
+    },
+    {
+      "Func": "fmt.Append",
+      "SummaryName": "fmt.Append",
+      "Want": {
+        "!arg 0": [
+          "!ret 0"
+        ],
+        "!arg 1": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 2
+      },
+      "Elapsed": 50110
+    }
+  ]
+}

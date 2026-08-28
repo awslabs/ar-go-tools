@@ -1,0 +1,85 @@
+# Analysis of github.com/aws/aws-sdk-go/aws/client.(*Client).NewRequest
+#
+# Source:
+#   func (c *Client) NewRequest(operation *request.Operation, params interface{}, data interface{}) *request.Request {
+#       return request.New(c.Config, c.ClientInfo, c.Handlers, c.Retryer, operation, params, data)
+#   }
+#
+# NewRequest is a thin wrapper around request.New, passing along the receiver's
+# Config, ClientInfo, Handlers and Retryer fields together with the operation,
+# params and data arguments. Inspecting request.New:
+#
+#   func New(cfg aws.Config, clientInfo metadata.ClientInfo, handlers Handlers,
+#       retryer Retryer, operation *Operation, params interface{}, data interface{}) *Request {
+#       ...
+#       httpReq, _ := http.NewRequest(method, "", nil)          // method from operation.HTTPMethod
+#       httpReq.URL, err = url.Parse(clientInfo.Endpoint)        // URL from clientInfo.Endpoint
+#       ... uses operation.HTTPPath to build httpReq.URL.Path ...
+#       r := &Request{
+#           Config:     cfg,
+#           ClientInfo: clientInfo,
+#           Handlers:   handlers.Copy(),
+#           Retryer:    retryer,
+#           Time:       time.Now(),
+#           Operation:  operation,
+#           HTTPRequest: httpReq,
+#           Body:       nil,
+#           Params:     params,
+#           Error:      err,
+#           Data:       data,
+#       }
+#       r.SetBufferBody([]byte{})
+#       return r
+#   }
+#
+# This directly establishes the following flows into the returned *request.Request:
+#   - operation (arg 0)        -> Operation field (whole pointer stored)
+#   - operation.HTTPMethod     -> HTTPRequest field (determines http.NewRequest's method)
+#   - operation.HTTPPath       -> HTTPRequest field (appended to httpReq.URL.Path)
+#   - params (arg 1)           -> Params field
+#   - data (arg 2)             -> Data field
+#   - receiver.Config          -> Config field
+#   - receiver.ClientInfo      -> ClientInfo field (whole struct copied)
+#   - receiver.ClientInfo      -> HTTPRequest field (via clientInfo.Endpoint used to build httpReq.URL)
+#   - receiver.ClientInfo      -> Error field (a parse error of clientInfo.Endpoint, wrapping the
+#                                  original url.Parse error, can end up in Error)
+#   - receiver.Handlers        -> Handlers field (Handlers.Copy() copies each handler list verbatim,
+#                                  a straightforward field-insensitive copy)
+#   - receiver.Retryer         -> Retryer field (embedded interface field; interfaces are treated
+#                                  field-insensitively, so no further path beyond ".Retryer")
+#
+# Body, Time, ExpireTime, RequestID, RetryCount, etc. are not influenced by any of the inputs
+# (Body is always set to an empty buffer via SetBufferBody([]byte{}), Time is time.Now()), so no
+# flows are recorded for them.
+#
+# Client.ClientInfo and Client.Retryer are embedded (anonymous) fields of the Client struct
+# (metadata.ClientInfo and request.Retryer respectively), so per the embedded-field convention we
+# use the type name as the field-access path segment: ".ClientInfo" and ".Retryer".
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/client"
+    receiver: "*Client"
+    method: "NewRequest"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0).Operation"
+      - from: "(!arg 0).HTTPMethod"
+        to: "(!ret 0).HTTPRequest"
+      - from: "(!arg 0).HTTPPath"
+        to: "(!ret 0).HTTPRequest"
+      - from: "!arg 1"
+        to: "(!ret 0).Params"
+      - from: "!arg 2"
+        to: "(!ret 0).Data"
+      - from: "(!receiver).Config"
+        to: "(!ret 0).Config"
+      - from: "(!receiver).ClientInfo"
+        to: "(!ret 0).ClientInfo"
+      - from: "(!receiver).ClientInfo"
+        to: "(!ret 0).HTTPRequest"
+      - from: "(!receiver).ClientInfo"
+        to: "(!ret 0).Error"
+      - from: "(!receiver).Handlers"
+        to: "(!ret 0).Handlers"
+      - from: "(!receiver).Retryer"
+        to: "(!ret 0).Retryer"

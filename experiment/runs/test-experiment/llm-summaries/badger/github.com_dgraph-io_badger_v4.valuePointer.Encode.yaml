@@ -1,0 +1,18 @@
+# valuePointer.Encode encodes the valuePointer struct (Fid, Len, Offset - all
+# uint32 fields) into a byte slice by doing a raw unsafe.Pointer cast/copy of
+# the receiver's bytes into a newly allocated []byte buffer of size vptrSize.
+#
+# There is no branching or filtering logic: every byte of the receiver ends up
+# in the returned slice, and all three fields contribute identically to the
+# output (they are just laid out contiguously in memory). Since none of the
+# fields behave differently with respect to the output, a single
+# field-insensitive flow from !receiver to !ret 0 is the precise and correct
+# summary (no need for field-sensitive breakdown into Fid/Len/Offset, since
+# they all flow into the same return value the same way).
+dataflow-summaries:
+  - package: "github.com/dgraph-io/badger/v4"
+    receiver: "valuePointer"
+    method: "Encode"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

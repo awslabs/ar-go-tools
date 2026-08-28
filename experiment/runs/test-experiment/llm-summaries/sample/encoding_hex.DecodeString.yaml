@@ -1,0 +1,27 @@
+# encoding/hex.DecodeString(s string) ([]byte, error)
+#
+# Source:
+#   func DecodeString(s string) ([]byte, error) {
+#       dst := make([]byte, DecodedLen(len(s)))
+#       n, err := Decode(dst, []byte(s))
+#       return dst[:n], err
+#   }
+#
+# Analysis:
+# - The input string `s` is converted to bytes and decoded into `dst`, which is
+#   returned (truncated to `n`). So `s` (the hex-encoded content) directly
+#   determines the returned []byte (!ret 0).
+# - `Decode` returns an error (CorruptInputError or ErrLength) when `s` is
+#   malformed (odd length or invalid hex characters). These errors embed the
+#   offending byte/index derived from `s` in their Error() string
+#   (e.g. "encoding/hex: invalid byte: ..."), meaning the error's content is
+#   determined by `s` as well, so `s` flows to !ret 1.
+# - No other inputs exist (single string argument), and there's no receiver.
+dataflow-summaries:
+  - package: "encoding/hex"
+    function: "DecodeString"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"

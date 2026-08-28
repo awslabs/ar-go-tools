@@ -1,0 +1,67 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  field-sensitive-funcs:
+  - .*
+  intra-timeout-ms: 60000
+  summarize-on-demand: true
+  taint-tracking:
+  - description: Checking that credentials don't get logged.
+    filters:
+    - type: ^error
+    - type: ^int
+    - package: log
+      type: T
+    sanitizers:
+    - method: Sign
+      package: .*signer/v4
+    - method: signWithBody
+      package: .*signer/v4
+    - method: ^GetInstanceRegion$
+      package: .*ec2roleprovider
+    severity: HIGH
+    sinks:
+    - context: amazon-ssm-agent
+      method: ^(Log|Error|Warn|Debug|Info|Print).*
+    - method: SendMessage
+      package: github.com/aws/amazon-ssm-agent/agent/session/controlchannel
+    sources:
+    - method: RemoteRetrieve
+      package: .*
+    - method: Get
+      package: credentials
+    tag: credential-logging
+    targets:
+    - amazon-ssm-agent-unix
+    unsafe-skip-bound-labels: true
+  - description: Checking that SSM parameters don't get logged.
+    filters:
+    - type: ^error
+    - type: ^int
+    - package: log
+      type: T
+    sanitizers:
+    - method: (GetName|GetType)
+      package: ssmparameterresolver
+    sinks:
+    - context: amazon-ssm-agent
+      method: ^(Log|Error|Warn|Debug|Info|Print).*
+    sources:
+    - method: getParametersFromSsmParameterStore
+      package: github.com/aws/amazon-ssm-agent/agent/ssm/ssmparameterresolver
+    tag: ssm-parameter-logging
+    targets:
+    - amazon-ssm-agent-unix
+    unsafe-skip-bound-labels: true
+options:
+  analysis-options:
+    unsafe-max-depth: 35
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/amazon-ssm-agent
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - core/agent.go
+  - core/agent_unix.go
+  - core/agent_parser.go
+  name: amazon-ssm-agent-unix

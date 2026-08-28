@@ -1,0 +1,31 @@
+# fmt.Append(b []byte, a ...any) []byte
+#
+# Source (from go doc -src):
+#   func Append(b []byte, a ...any) []byte {
+#       p := newPrinter()
+#       p.doPrint(a)
+#       b = append(b, p.buf...)
+#       p.free()
+#       return b
+#   }
+#
+# Analysis:
+# - `b` (!arg 0) is the initial byte slice. It is directly appended to via
+#   `append(b, p.buf...)` and the result is returned, so !arg 0 flows to !ret 0.
+# - `a` (!arg 1, variadic) is formatted by p.doPrint(a), which writes the
+#   formatted representation of each operand into p.buf. p.buf is then
+#   appended onto b and returned. So the contents of the variadic arguments
+#   flow into !ret 0 as well.
+# - No other outputs exist (single return value, no receiver).
+# - Interfaces: `a` is `...any`, an interface-typed variadic parameter, so it
+#   is treated field-insensitively (which is trivially true for a slice/variadic
+#   position already).
+
+dataflow-summaries:
+  - package: "fmt"
+    function: "Append"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

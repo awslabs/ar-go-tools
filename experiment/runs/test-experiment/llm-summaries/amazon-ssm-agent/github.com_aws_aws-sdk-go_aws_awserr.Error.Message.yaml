@@ -1,0 +1,18 @@
+# awserr.Error is an interface (extends error) with methods Code(), Message(),
+# OrigErr(), and Error(). Message() returns the error details message that was
+# stored in the underlying concrete error type (e.g. via awserr.New(code, message,
+# origErr) - the message argument is stored and returned by Message()).
+#
+# Since this is an interface method summary, it must apply to all possible
+# implementations. The natural and expected behavior of any Message() implementation
+# is to return data that was part of constructing the error value (the receiver),
+# so we summarize this as receiver -> return value, following the same pattern as
+# the Stringer.String example. Interface method summaries are not field-sensitive,
+# so we use the field-insensitive !receiver identifier.
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/awserr"
+    interface: "Error"
+    method: "Message"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

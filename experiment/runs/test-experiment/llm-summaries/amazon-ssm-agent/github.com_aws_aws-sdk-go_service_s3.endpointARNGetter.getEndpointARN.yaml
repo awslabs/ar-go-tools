@@ -1,0 +1,48 @@
+# Reasoning:
+# endpointARNGetter is an unexported interface in github.com/aws/aws-sdk-go/service/s3:
+#
+#   type endpointARNGetter interface {
+#       getEndpointARN() (arn.Resource, error)
+#       hasEndpointARN() bool
+#   }
+#
+# It is implemented by many *_Input types (GetObjectInput, CopyObjectInput,
+# PutObjectInput, WriteGetObjectResponseInput, etc.), all generated with the same
+# pattern, e.g.:
+#
+#   func (s *GetObjectInput) getEndpointARN() (arn.Resource, error) {
+#       if s.Bucket == nil {
+#           return nil, fmt.Errorf("member Bucket is nil")
+#       }
+#       return parseEndpointARN(*s.Bucket)
+#   }
+#
+# parseEndpointARN calls internal/s3shared/arn.ParseResource(s, resParser), which:
+#   - parses the input string into an arn.ARN (aws/arn.Parse)
+#   - on various validation failures, returns an InvalidARNError{ARN: a, Reason: ...}
+#     wrapping the parsed (still input-derived) ARN struct as the error
+#   - on success, calls resParser(a) to build the typed Resource, which is derived
+#     directly from fields of the input ARN (also input-derived)
+#
+# So the receiver's Bucket field (the sole data source of the ARN string) flows into
+# both the returned arn.Resource (!ret 0) and the returned error (!ret 1, via
+# InvalidARNError wrapping the parsed ARN when validation fails).
+#
+# Since this is an interface method summary, per the task instructions interface
+# summaries must be field-insensitive: we cannot single out ".Bucket" specifically
+# (other implementers could name/store the field differently), so we use the whole
+# !receiver as the source. hasEndpointARN (the other interface method) is not
+# requested here.
+#
+# No other inputs exist (the method takes no arguments), so all flows originate
+# from !receiver.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/service/s3"
+    interface: "endpointARNGetter"
+    method: "getEndpointARN"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"

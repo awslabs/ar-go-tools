@@ -1,0 +1,402 @@
+{
+  "rq": "checker-efficiency",
+  "repo": "sample",
+  "targets": [
+    {
+      "summary_name": "(*crypto/ecdsa.PrivateKey).Sign",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/ecdsa.PrivateKey).Sign",
+          "checker_seconds": 0.003876995,
+          "constructive_seconds": 304.203624924
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+          "checker_seconds": 0.00141158,
+          "constructive_seconds": 0.322481529
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P521Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P521Element).Square",
+          "checker_seconds": 0.002477664,
+          "constructive_seconds": 18.56016241
+        }
+      ]
+    },
+    {
+      "summary_name": "(*encoding/base64.Encoding).EncodeToString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*encoding/base64.Encoding).EncodeToString",
+          "checker_seconds": 0.000025188,
+          "constructive_seconds": 0.054601565
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/cipher.NewGCM",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/cipher.NewGCM",
+          "checker_seconds": 0.000010928,
+          "constructive_seconds": 0.053237414
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.GenerateKey",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.GenerateKey",
+          "checker_seconds": 0.000082904,
+          "constructive_seconds": 112.225197815
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.MarshalCompressed",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.MarshalCompressed",
+          "checker_seconds": 0.000043132,
+          "constructive_seconds": 148.713079318
+        }
+      ]
+    },
+    {
+      "summary_name": "encoding/hex.DecodeString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "encoding/hex.DecodeString",
+          "checker_seconds": 0.000013696,
+          "constructive_seconds": 0.056466304
+        }
+      ]
+    },
+    {
+      "summary_name": "github.com/aws/aws-sdk-go/aws.String",
+      "kind": "function",
+      "results": [
+        {
+          "name": "github.com/aws/aws-sdk-go/aws.String",
+          "checker_seconds": 0.000007462,
+          "constructive_seconds": 0.052870411
+        }
+      ]
+    },
+    {
+      "summary_name": "io/ioutil.ReadFile",
+      "kind": "function",
+      "results": [
+        {
+          "name": "io/ioutil.ReadFile",
+          "checker_seconds": 0.000035958,
+          "constructive_seconds": 0.054707324
+        }
+      ]
+    },
+    {
+      "summary_name": "(fmt.Stringer).String",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(*net/http.http2PushPromiseFrame).String",
+          "checker_seconds": 0.000014741,
+          "constructive_seconds": 0.047514557
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetCallerIdentityOutput).String",
+          "checker_seconds": 0.000004516,
+          "constructive_seconds": 0.046739586
+        },
+        {
+          "name": "(*net/http.http2ContinuationFrame).String",
+          "checker_seconds": 0.000004273,
+          "constructive_seconds": 0.048657841
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.RecordsEvent).String",
+          "checker_seconds": 0.000004197,
+          "constructive_seconds": 0.048916042
+        },
+        {
+          "name": "(*net/http.http2GoAwayFrame).String",
+          "checker_seconds": 0.000004962,
+          "constructive_seconds": 0.046394057
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountsOutput).String",
+          "checker_seconds": 0.000003793,
+          "constructive_seconds": 0.046957831
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.S3ObjectLambdaAccessPointARN).String",
+          "checker_seconds": 0.00000471,
+          "constructive_seconds": 0.048484957
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountRolesOutput).String",
+          "checker_seconds": 0.000004191,
+          "constructive_seconds": 0.046979446
+        },
+        {
+          "name": "(*net/http.http2MetaHeadersFrame).String",
+          "checker_seconds": 0.00000422,
+          "constructive_seconds": 0.045918304
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.PutObjectOutput).String",
+          "checker_seconds": 0.000004456,
+          "constructive_seconds": 0.050449957
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/service/s3.outpostAccessPointEndpointBuilder).String",
+          "checker_seconds": 0.000004777,
+          "constructive_seconds": 0.048641275
+        },
+        {
+          "name": "(*net/http.http2UnknownFrame).String",
+          "checker_seconds": 0.000004596,
+          "constructive_seconds": 0.045976659
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.ContinuationEvent).String",
+          "checker_seconds": 0.00000434,
+          "constructive_seconds": 0.046813712
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.ProgressEvent).String",
+          "checker_seconds": 0.00000525,
+          "constructive_seconds": 0.04751912
+        },
+        {
+          "name": "(*reflect.rtype).String",
+          "checker_seconds": 0.000006871,
+          "constructive_seconds": 0.048447142
+        },
+        {
+          "name": "(*bytes.Buffer).String",
+          "checker_seconds": 0.000004185,
+          "constructive_seconds": 0.046348741
+        },
+        {
+          "name": "(*net/http.http2PingFrame).String",
+          "checker_seconds": 0.000004708,
+          "constructive_seconds": 0.045153418
+        },
+        {
+          "name": "(*net/http.http2WindowUpdateFrame).String",
+          "checker_seconds": 0.000004033,
+          "constructive_seconds": 0.045217183
+        },
+        {
+          "name": "(*net.IPAddr).String",
+          "checker_seconds": 0.00000563,
+          "constructive_seconds": 0.04567717
+        },
+        {
+          "name": "(*net/url.Userinfo).String",
+          "checker_seconds": 0.000006623,
+          "constructive_seconds": 0.048285551
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.AccessPointARN).String",
+          "checker_seconds": 0.000004591,
+          "constructive_seconds": 0.049204232
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ResourceNotFoundException).String",
+          "checker_seconds": 0.000005511,
+          "constructive_seconds": 0.047295756
+        },
+        {
+          "name": "(*net.UDPAddr).String",
+          "checker_seconds": 0.000005769,
+          "constructive_seconds": 0.045994992
+        },
+        {
+          "name": "(*net/http.http2RSTStreamFrame).String",
+          "checker_seconds": 0.00000373,
+          "constructive_seconds": 0.046839695
+        },
+        {
+          "name": "(*flag.stringValue).String",
+          "checker_seconds": 0.000004297,
+          "constructive_seconds": 0.049084549
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.OutpostAccessPointARN).String",
+          "checker_seconds": 0.000005286,
+          "constructive_seconds": 0.046918877
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/awserr.baseError).String",
+          "checker_seconds": 0.000003859,
+          "constructive_seconds": 0.046045123
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.DecodeAuthorizationMessageOutput).String",
+          "checker_seconds": 0.000006025,
+          "constructive_seconds": 0.045744115
+        },
+        {
+          "name": "(*net/http.http2DataFrame).String",
+          "checker_seconds": 0.000003859,
+          "constructive_seconds": 0.049004227
+        },
+        {
+          "name": "(*net/http.socksAddr).String",
+          "checker_seconds": 0.000006862,
+          "constructive_seconds": 0.044929331
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.UnauthorizedException).String",
+          "checker_seconds": 0.000004439,
+          "constructive_seconds": 0.048883146
+        },
+        {
+          "name": "(*net/http.pattern).String",
+          "checker_seconds": 0.000003671,
+          "constructive_seconds": 0.044994673
+        },
+        {
+          "name": "(*math/big.Int).String",
+          "checker_seconds": 0.000012531,
+          "constructive_seconds": 0.04632928
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleOutput).String",
+          "checker_seconds": 0.000003801,
+          "constructive_seconds": 0.047100766
+        },
+        {
+          "name": "(*net/http.http2SettingsFrame).String",
+          "checker_seconds": 0.000004946,
+          "constructive_seconds": 0.049252776
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.StatsEvent).String",
+          "checker_seconds": 0.000004221,
+          "constructive_seconds": 0.04526922
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/internal/s3shared/s3err.RequestFailure).String",
+          "checker_seconds": 0.00000522,
+          "constructive_seconds": 0.046908099
+        },
+        {
+          "name": "(*net/url.URL).String",
+          "checker_seconds": 0.000017804,
+          "constructive_seconds": 0.050142307
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.TooManyRequestsException).String",
+          "checker_seconds": 0.000004297,
+          "constructive_seconds": 0.047555655
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.LogoutOutput).String",
+          "checker_seconds": 0.000004761,
+          "constructive_seconds": 0.047688164
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.GetRoleCredentialsOutput).String",
+          "checker_seconds": 0.000004155,
+          "constructive_seconds": 0.048415781
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetSessionTokenOutput).String",
+          "checker_seconds": 0.000004186,
+          "constructive_seconds": 0.047508515
+        },
+        {
+          "name": "(*net.UnixAddr).String",
+          "checker_seconds": 0.000005776,
+          "constructive_seconds": 0.045060615
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithSAMLOutput).String",
+          "checker_seconds": 0.000004532,
+          "constructive_seconds": 0.047859153
+        },
+        {
+          "name": "(*net/http.http2writeData).String",
+          "checker_seconds": 0.000011716,
+          "constructive_seconds": 0.045475022
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetAccessKeyInfoOutput).String",
+          "checker_seconds": 0.000005007,
+          "constructive_seconds": 385.232725869
+        },
+        {
+          "name": "(*net.TCPAddr).String",
+          "checker_seconds": 0.000005644,
+          "constructive_seconds": 0.047174138
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/awserr.requestError).String",
+          "checker_seconds": 0.000006253,
+          "constructive_seconds": 0.048969534
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetFederationTokenOutput).String",
+          "checker_seconds": 0.000003915,
+          "constructive_seconds": 0.046266865
+        },
+        {
+          "name": "(*os.ProcessState).String",
+          "checker_seconds": 0.00000735,
+          "constructive_seconds": 0.04868582
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.EndEvent).String",
+          "checker_seconds": 0.00000557,
+          "constructive_seconds": 0.045771271
+        },
+        {
+          "name": "(*strings.Builder).String",
+          "checker_seconds": 0.000006853,
+          "constructive_seconds": 0.0475368
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithWebIdentityOutput).String",
+          "checker_seconds": 0.000005029,
+          "constructive_seconds": 0.045384113
+        },
+        {
+          "name": "(*net/http.http2HeadersFrame).String",
+          "checker_seconds": 0.000004532,
+          "constructive_seconds": 0.047508785
+        },
+        {
+          "name": "(*net/http.http2PriorityFrame).String",
+          "checker_seconds": 0.000004426,
+          "constructive_seconds": 0.046223414
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.InvalidRequestException).String",
+          "checker_seconds": 0.000004529,
+          "constructive_seconds": 0.046323584
+        }
+      ]
+    }
+  ]
+}

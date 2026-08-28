@@ -1,0 +1,14 @@
+{
+  "rq": "workflow-efficiency",
+  "repo": "amazon-ssm-agent",
+  "summarization_seconds": 376.24,
+  "check_seconds": 30.47,
+  "taint_with_summaries_seconds": 141.73,
+  "taint_baseline_seconds": 168.37,
+  "constructive_seconds": 1.53,
+  "speedup_factor": 1.19,
+  "agentic_vs_constructive_speedup": 0.0,
+  "dataflows_match": true,
+  "extra_dataflows_with_summaries": [],
+  "missing_dataflows_with_summaries": []
+}

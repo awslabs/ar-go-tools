@@ -1,0 +1,139 @@
+dataflow-summaries:
+- flows:
+  - from: (!arg 0).SendPingTimeout
+    to: (!receiver).readIdleTimeout
+  method: serve
+  package: net/http
+  receiver: http2serverConn
+- flows:
+  - from: '!arg 1'
+    to: '!arg 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 1'
+  function: MetricFamilyToText
+  package: github.com/prometheus/common/expfmt
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: ListenAndServe
+  package: net/http
+- flows: []
+  function: Handle
+  package: net/http
+- flows: []
+  function: HandleFunc
+  package: net/http
+- flows:
+  - from: '!arg 1'
+    to: '!arg 0'
+  - from: '!arg 2'
+    to: '!arg 0'
+  function: Error
+  package: net/http
+- flows:
+  - from: '!arg 2'
+    to: '!arg 0'
+  - from: (!arg 1).URL.Path
+    to: '!arg 0'
+  - from: '!arg 3'
+    to: '!arg 0'
+  function: Redirect
+  package: net/http
+- flows: []
+  function: NotFound
+  package: net/http
+- flows: []
+  function: StatusText
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: CanonicalHeaderKey
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: DetectContentType
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0).Method
+  - from: '!arg 0'
+    to: '!ret 1'
+  - from: '!arg 1'
+    to: (!ret 0).URL
+  - from: '!arg 1'
+    to: (!ret 0).Host
+  - from: '!arg 1'
+    to: '!ret 1'
+  - from: '!arg 2'
+    to: (!ret 0).Body
+  - from: '!arg 2'
+    to: (!ret 0).GetBody
+  function: NewRequest
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: (!ret 0).Method
+  - from: '!arg 1'
+    to: '!ret 1'
+  - from: '!arg 2'
+    to: (!ret 0).URL
+  - from: '!arg 2'
+    to: (!ret 0).Host
+  - from: '!arg 2'
+    to: '!ret 1'
+  - from: '!arg 3'
+    to: (!ret 0).Body
+  - from: '!arg 3'
+    to: (!ret 0).GetBody
+  - from: '!arg 3'
+    to: (!ret 0).ContentLength
+  function: NewRequestWithContext
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0).Request.URL
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: Get
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0).Request.URL
+  - from: '!arg 0'
+    to: '!ret 1'
+  - from: '!arg 1'
+    to: (!ret 0).Request.Header
+  function: Post
+  package: net/http
+- flows:
+  - from: '!arg 2'
+    to: '!arg 0'
+  - from: (!arg 1).URL.Path
+    to: '!arg 0'
+  - from: (!arg 1).URL.RawQuery
+    to: '!arg 0'
+  - from: (!arg 1).Header
+    to: '!arg 0'
+  function: ServeFile
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: FileServer
+  package: net/http
+- flows:
+  - from: '!arg 1'
+    to: '!arg 0'
+  function: SetCookie
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: Clone
+  package: internal/stringslite

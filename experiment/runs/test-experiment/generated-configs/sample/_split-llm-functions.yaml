@@ -1,0 +1,127 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: EncodeToString
+  package: encoding/hex
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: ParseECPrivateKey
+  package: crypto/x509
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: NewGCM
+  package: crypto/cipher
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: NewCipher
+  package: crypto/aes
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: DecodeString
+  package: encoding/hex
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: TrimSpace
+  package: strings
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: ReadFile
+  package: io/ioutil
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: String
+  package: github.com/aws/aws-sdk-go/aws
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!arg 0'
+    to: '!ret 0'
+  method: Square
+  package: crypto/internal/fips140/nistec/fiat
+  receiver: '*P224Element'
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!receiver'
+    to: '!ret 0'
+  method: Square
+  package: crypto/internal/fips140/nistec/fiat
+  receiver: P256Element
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!arg 0'
+    to: '!ret 0'
+  method: Square
+  package: crypto/internal/fips140/nistec/fiat
+  receiver: '*P384Element'
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!receiver'
+    to: '!ret 0'
+  method: Square
+  package: crypto/internal/fips140/nistec/fiat
+  receiver: P521Element
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  - from: '!arg 2'
+    to: '!ret 0'
+  function: MarshalCompressed
+  package: crypto/elliptic
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!ret 1'
+  - from: '!arg 1'
+    to: '!ret 1'
+  - from: '!arg 0'
+    to: '!ret 2'
+  - from: '!arg 1'
+    to: '!ret 2'
+  - from: '!arg 1'
+    to: '!ret 3'
+  function: GenerateKey
+  package: crypto/elliptic
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  method: EncodeToString
+  package: encoding/base64
+  receiver: '*Encoding'
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!ret 0'
+  method: Sign
+  package: crypto/ecdsa
+  receiver: '*PrivateKey'

@@ -1,0 +1,20 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0)[*]
+  - from: '!arg 0'
+    to: '!ret 1'
+  - from: '!arg 0'
+    to: '!ret 2'
+  - from: '!arg 0'
+    to: '!ret 3'
+  - from: '!arg 1'
+    to: (!ret 0)[*]
+  - from: '!arg 1'
+    to: '!ret 1'
+  - from: '!arg 1'
+    to: '!ret 2'
+  - from: '!arg 1'
+    to: '!ret 3'
+  function: GenerateKey
+  package: crypto/elliptic

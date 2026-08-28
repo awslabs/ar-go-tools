@@ -1,0 +1,17 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  check-specs:
+  - ../../../experiment/runs/test-llm/generated-configs/govatar/_split-ground-truth-functions.yaml
+  intra-timeout-ms: 60000
+  summarize-on-demand: true
+options:
+  analysis-options:
+    unsafe-max-depth: 35
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/govatar
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./govatar
+  name: govatar-cli

@@ -1,0 +1,25 @@
+# encoding/hex.EncodeToString(src []byte) string
+#
+# Source:
+#   func EncodeToString(src []byte) string {
+#       dst := make([]byte, EncodedLen(len(src)))
+#       Encode(dst, src)
+#       return string(dst)
+#   }
+#
+# Analysis:
+# - `dst` is a freshly allocated byte slice sized based on len(src).
+# - Encode(dst, src) writes the hex-encoded representation of each byte of
+#   `src` into `dst`. Every byte of `src` directly determines the
+#   corresponding two hex characters in `dst`, so `src`'s content flows
+#   fully into `dst`.
+# - `dst` is then converted to a string and returned.
+# - There is no other input (no receiver, no other args) and only one
+#   return value, so the only flow is from `!arg 0` (src) to `!ret 0`.
+
+dataflow-summaries:
+  - package: "encoding/hex"
+    function: "EncodeToString"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

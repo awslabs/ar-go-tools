@@ -1,0 +1,92 @@
+{
+  "rq": "checker-efficiency",
+  "repo": "amazon-ssm-agent",
+  "targets": [
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+          "checker_seconds": 1.5610236240000002
+        }
+      ]
+    },
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetException",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetException",
+          "checker_seconds": 0.018270164
+        }
+      ]
+    },
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+          "checker_seconds": 0.018867321
+        }
+      ]
+    },
+    {
+      "summary_name": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(*net.DNSError).Temporary",
+          "checker_seconds": 0.000013627,
+          "constructive_seconds": 0.095618714
+        },
+        {
+          "name": "(*net.timeoutError).Temporary",
+          "checker_seconds": 0.000003991,
+          "constructive_seconds": 0.095482673
+        },
+        {
+          "name": "(*net/http.timeoutError).Temporary",
+          "checker_seconds": 0.000003977,
+          "constructive_seconds": 0.098218136
+        },
+        {
+          "name": "(*net.OpError).Temporary",
+          "checker_seconds": 0.000007174,
+          "constructive_seconds": 0.097083859
+        },
+        {
+          "name": "(*net.AddrError).Temporary",
+          "checker_seconds": 0.000003635,
+          "constructive_seconds": 0.100005639
+        },
+        {
+          "name": "(*internal/poll.DeadlineExceededError).Temporary",
+          "checker_seconds": 0.000003797,
+          "constructive_seconds": 0.096724371
+        },
+        {
+          "name": "(*net.temporaryError).Temporary",
+          "checker_seconds": 0.000003212,
+          "constructive_seconds": 0.652069918
+        },
+        {
+          "name": "(*net/url.Error).Temporary",
+          "checker_seconds": 0.000004743,
+          "constructive_seconds": 0.097009578
+        },
+        {
+          "name": "(*crypto/tls.permanentError).Temporary",
+          "checker_seconds": 0.000003423,
+          "constructive_seconds": 0.096248175
+        },
+        {
+          "name": "(*net/http.http2httpError).Temporary",
+          "checker_seconds": 0.000003738,
+          "constructive_seconds": 0.100788086
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+
+# Analysis of github.com/dgraph-io/badger/v4.Open(opt Options) (*DB, error)
+#
+# Open builds a *DB from the given Options and returns it (possibly together with
+# a non-nil error on early failure paths, where db can be nil or partially built).
+#
+# Key flows found by tracing the source:
+#
+# 1. `db := &DB{ ..., opt: opt, ... }` copies the entire Options argument verbatim
+#    into the `opt` field of the constructed DB. Since DB.opt is of type Options
+#    (not interface, not too deep), this is captured precisely as
+#    `!arg 0 -> (!ret 0).opt`. This also transitively covers every individual
+#    field of Options (e.g. Dir, EncryptionKey, ValueThreshold, etc.) becoming
+#    reachable via `(!ret 0).opt.<field>` (path length 2 access on the field,
+#    well within the max path length of 3), so we don't need one line per field
+#    for this particular copy.
+#
+# 2. `krOpt := KeyRegistryOptions{ EncryptionKey: opt.EncryptionKey, ... }` then
+#    `db.registry, err = OpenKeyRegistry(krOpt)`. OpenKeyRegistry/newKeyRegistry
+#    derive/store key material based on EncryptionKey inside the *KeyRegistry
+#    object, which becomes `db.registry`. This is a distinct copy of sensitive
+#    key material into a different field than `opt`, so it's called out
+#    explicitly: `(!arg 0).EncryptionKey -> (!ret 0).registry`.
+#
+# 3. Error return (`!ret 1`): several early-return error paths embed Options
+#    fields directly into the returned error's message via fmt.Errorf/y.Wrapf,
+#    e.g.:
+#      - checkAndSetOptions: `fmt.Errorf("Valuethreshold %d greater than max
+#        batch size of %d...", opt.ValueThreshold, opt.maxBatchSize)`, bubbled up
+#        directly as Open's returned error.
+#      - createDirs(opt): embeds opt.Dir / opt.ValueDir into
+#        `y.Wrapf(err, "Invalid Dir: %q", path)`,
+#        `fmt.Errorf("Cannot find directory %q for read-only open", path)`,
+#        `y.Wrapf(err, "Error Creating Dir: %q", path)`, bubbled up directly.
+#      - acquireDirectoryLock(opt.Dir/opt.ValueDir, ...): embeds the directory
+#        path into wrapped errors ("cannot open directory %q", "Cannot acquire
+#        directory lock on %q...", "Cannot write pid file %q"), bubbled up
+#        directly.
+#    Given this recurring pattern (Options' string/path-like fields ending up
+#    embedded in wrapped errors at multiple points throughout this long
+#    function, and plausibly at a few more call sites not individually
+#    enumerated here, e.g. inside openMemTables/newLevelsController/vlog.open
+#    which also operate on opt.Dir), we use one field-insensitive flow
+#    `!arg 0 -> !ret 1` rather than trying to enumerate every individual field
+#    that can leak into the error text; this is the safer, sound choice per
+#    the workflow's guidance for cases of genuine, recurring ambiguity across
+#    many call sites, rather than an arbitrary "just in case" padding.
+#
+# Not included:
+#  - Fields that only affect control flow / branching (e.g. opt.NumCompactors,
+#    opt.InMemory, opt.ReadOnly used purely in conditionals) without their
+#    actual values being copied into outputs are not modeled as flows, per the
+#    convention that only genuine value/data dependence (not control
+#    dependence) is captured.
+#  - Internal db fields whose content is derived from opt but which don't
+#    represent a distinct additional copy beyond what `(!ret 0).opt` and
+#    `(!ret 0).registry` already capture (e.g. db.manifest, db.dirLockGuard,
+#    db.valueDirGuard, db.lc) are not given their own lines, since the same
+#    underlying data (e.g. opt.Dir) is already reachable via `(!ret 0).opt.Dir`.
+
+dataflow-summaries:
+  - package: "github.com/dgraph-io/badger/v4"
+    function: "Open"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0).opt"
+      - from: "(!arg 0).EncryptionKey"
+        to: "(!ret 0).registry"
+      - from: "!arg 0"
+        to: "!ret 1"

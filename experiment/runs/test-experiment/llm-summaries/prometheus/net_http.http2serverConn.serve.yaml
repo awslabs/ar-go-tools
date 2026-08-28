@@ -1,0 +1,45 @@
+# Analysis of net/http.(*http2serverConn).serve(conf http2http2Config)
+#
+# This is the internal HTTP/2 server connection event loop. It has no return
+# value, and the function's sole formal parameter, `conf` (an
+# http2http2Config passed by value), is mostly consumed locally to build
+# SETTINGS frames written out on the wire (MaxReadFrameSize,
+# MaxDecoderHeaderTableSize) or used as transient loop-local values
+# (MaxUploadBufferPerConnection, used only to compute a window-update size
+# passed to sc.sendWindowUpdate; this does not write into any receiver field
+# or return value).
+#
+# The one place where an argument field is stored directly into persistent
+# receiver state is:
+#     if conf.SendPingTimeout > 0 {
+#         sc.readIdleTimeout = conf.SendPingTimeout
+#         ...
+#     }
+# This is a direct, sound, field-sensitive flow from `(!arg 0).SendPingTimeout`
+# to `(!receiver).readIdleTimeout`.
+#
+# All other work performed by serve() is effectively an infinite select loop
+# dispatching to other methods on the same receiver (sc.writeFrame,
+# sc.processFrameFromReader, sc.startPush, sc.handlerDone, etc.). Those calls
+# operate on receiver state that is already tracked via their own dataflow
+# summaries (generated separately) and via the fact that the receiver `sc` is
+# the same object shared with the goroutines started elsewhere (e.g.
+# sc.readFrames()); serve() itself does not introduce any additional flow
+# from `conf` (or from receiver fields) to any return value, since the
+# function returns nothing (`func (sc *http2serverConn) serve(conf
+# http2http2Config)`), nor does it take any other arguments.
+#
+# No other argument fields flow into any lasting, externally observable
+# location (return value or receiver field) from the analysis of the source.
+# Conservatively, network writes via sc.conn are side effects on a field of
+# the receiver, not a modeled position (arg/ret/receiver-field) captured by
+# this summary schema, so they're excluded per the schema's design (only
+# args/rets/receiver fields are tracked).
+
+dataflow-summaries:
+  - package: "net/http"
+    receiver: "http2serverConn"
+    method: "serve"
+    flows:
+      - from: "(!arg 0).SendPingTimeout"
+        to: "(!receiver).readIdleTimeout"

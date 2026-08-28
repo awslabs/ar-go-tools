@@ -1,0 +1,18 @@
+{
+  "rq": "llm-effectiveness",
+  "repo": "govatar",
+  "targets": [
+    {
+      "summary_name": "(*text/tabwriter.Writer).Write",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*text/tabwriter.Writer).Write",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 2
+        }
+      ]
+    }
+  ]
+}

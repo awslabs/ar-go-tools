@@ -1,0 +1,17 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  check-specs:
+  - ../../../experiment/ground-truth-summaries/govatar/functions.yaml
+  summarize-on-demand: true
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/govatar
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./govatar
+  name: govatar-cli

@@ -1,0 +1,40 @@
+### Reasoning
+#
+# Function: func (priv *PrivateKey) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error)
+#
+# Sign dispatches to either signRFC6979(priv, digest, opts) (when rand == nil, RFC6979
+# deterministic signing) or SignASN1(rand, priv, digest) (when rand != nil, randomized
+# signing via signFIPS/signLegacy/boring paths). In every path:
+#   - The private key (receiver) directly determines the signature output (the
+#     signing scalar / curve parameters are used to compute r, s which are ASN.1
+#     encoded into the returned []byte). So !receiver -> !ret 0.
+#   - The digest/hash argument is the message hash that is signed (possibly
+#     truncated to curve order bit-length) and is directly incorporated into the
+#     signature computation. So !arg <digest> -> !ret 0.
+#   - The rand io.Reader supplies randomness (nonce k, or a single byte via
+#     randutil.MaybeReadByte, or blinding) that affects the produced signature
+#     bytes (note: not deterministically, but bytes read from rand influence the
+#     output). So !arg <rand> -> !ret 0.
+#   - opts (crypto.SignerOpts) is only consulted for opts.HashFunc() to validate
+#     digest length consistency in the deterministic (RFC6979) path; it does not
+#     contribeute any data content to the signature bytes or to error content.
+#     Excluded from flows.
+#   - Errors returned (curve mismatch, rand read failures, boring/FIPS wrapper
+#     errors) are generic sentinel/wrapped errors that do not embed key material
+#     or digest bytes into their message text (unlike e.g. fmt.Errorf with %q of
+#     sensitive data). So no flows are recorded into !ret 1 from receiver/digest/rand.
+#
+# Summary: receiver, digest, and rand all flow into the returned signature bytes
+# (!ret 0). opts does not flow anywhere. No argument flows into the error (!ret 1).
+
+dataflow-summaries:
+  - package: "crypto/ecdsa"
+    receiver: "*PrivateKey"
+    method: "Sign"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 0"

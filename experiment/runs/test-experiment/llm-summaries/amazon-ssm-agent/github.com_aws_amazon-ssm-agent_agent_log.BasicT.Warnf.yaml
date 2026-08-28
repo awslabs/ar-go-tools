@@ -1,0 +1,62 @@
+# Reasoning:
+#
+# github.com/aws/amazon-ssm-agent/agent/log.BasicT is an interface:
+#
+#   type BasicT interface {
+#       ...
+#       // Warnf formats message according to format specifier
+#       // and writes to log with level Warn.
+#       Warnf(format string, params ...interface{}) error
+#       ...
+#   }
+#
+# The doc comment on BasicT states "This interface matches seelog.LoggerInterface"
+# (github.com/cihub/seelog.LoggerInterface), which declares the identical signature
+# `Warnf(format string, params ...interface{}) error`.
+#
+# Since we could not load the full program via the provided config (repeated
+# "could not create directory .../logs/argot" errors when reloading the config,
+# so argot_load never succeeded), we could not enumerate/inspect all concrete
+# implementations of BasicT within the amazon-ssm-agent repository itself.
+# However, seelog's own default implementation (commonLogger.Warnf) shows the
+# canonical, expected behavior for this interface method:
+#
+#   func (cLogger *commonLogger) Warnf(format string, params ...interface{}) error {
+#       message := newLogFormattedMessage(format, params)
+#       cLogger.warnWithCallDepth(loggerFuncCallDepth, message)
+#       return errors.New(message.String())
+#   }
+#
+# Here, `format` and `params` are combined (via fmt-style formatting) into a
+# message string, which is written to the log (a global sink, not part of the
+# summary) AND embedded into the returned error via errors.New(message.String()).
+# This is the standard "Warnf" pattern used across the codebase: the formatted
+# message content determines the content of the returned error.
+#
+# Since this is an interface method summary, it must apply soundly across all
+# implementations and must not use field-sensitive access paths (interface
+# methods are field-insensitive by construction here, and `format`/`params`
+# are plain string/variadic-interface arguments anyway, not structs).
+#
+# Flows included:
+#   - !arg 0 (format string)   -> !ret 0 (error): the format string's content
+#     (e.g. literal text and %-directives) is part of the formatted message
+#     embedded in the returned error.
+#   - !arg 1 (params ...interface{}) -> !ret 0 (error): the values substituted
+#     into the format string are also part of the formatted message embedded
+#     in the returned error.
+#
+# No other flows exist: there is no other return value, and the receiver
+# itself (the logger) is not being read from to produce the return value in
+# a way expressible in this summary format (it's just used to dispatch to the
+# log sink, which is not modeled).
+
+dataflow-summaries:
+  - package: "github.com/aws/amazon-ssm-agent/agent/log"
+    interface: "BasicT"
+    method: "Warnf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

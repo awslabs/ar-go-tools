@@ -1,0 +1,46 @@
+# Analysis of github.com/aws/aws-sdk-go/aws/csm.(*metric).TruncateFields
+#
+# Source:
+#   func (m *metric) TruncateFields() {
+#       m.ClientID = truncateString(m.ClientID, 255)
+#       m.UserAgent = truncateString(m.UserAgent, 256)
+#       m.AWSException = truncateString(m.AWSException, 128)
+#       m.AWSExceptionMessage = truncateString(m.AWSExceptionMessage, 512)
+#       m.SDKException = truncateString(m.SDKException, 128)
+#       m.SDKExceptionMessage = truncateString(m.SDKExceptionMessage, 512)
+#       m.FinalAWSException = truncateString(m.FinalAWSException, 128)
+#       m.FinalAWSExceptionMessage = truncateString(m.FinalAWSExceptionMessage, 512)
+#       m.FinalSDKException = truncateString(m.FinalSDKException, 128)
+#       m.FinalSDKExceptionMessage = truncateString(m.FinalSDKExceptionMessage, 512)
+#   }
+#
+# truncateString(v *string, l int) *string:
+#   func truncateString(v *string, l int) *string {
+#       if v != nil && len(*v) > l {
+#           nv := (*v)[:l]
+#           return &nv
+#       }
+#       return v
+#   }
+#
+# This method has no arguments and no return value; it only mutates the
+# receiver in place. Each field is reassigned exclusively from a (possibly
+# truncated) copy of its own prior value - there is no mixing of data
+# between different fields, no data escapes to a return value, and no
+# external argument feeds into any field.
+#
+# The only conceivable flow per field is an identity flow (field -> same
+# field), which the validator rejects as carrying no information (a
+# self-flow is a no-op from a taint-propagation standpoint: the field's
+# taint status after the call is unaffected either way, whether the
+# analysis treats an unsummarized field as preserved by default or not,
+# stating field -> same field adds nothing).
+#
+# Since there are no cross-field, argument, or return-value flows to
+# report, the correct summary has an empty flows list.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/csm"
+    receiver: "*metric"
+    method: "TruncateFields"
+    flows: []

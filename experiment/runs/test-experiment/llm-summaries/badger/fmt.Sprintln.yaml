@@ -1,0 +1,20 @@
+# fmt.Sprintln(a ...any) string
+#
+# Sprintln formats each operand in `a` using their default formats (calling
+# String()/Error()/Format() etc. on them as applicable) and concatenates the
+# results, separated by spaces, with a trailing newline, into the returned
+# string. Every element of the variadic argument slice therefore flows into
+# the returned string. There are no other outputs (no mutation of arguments,
+# no error return), so the only flow is from the variadic argument (!arg 0)
+# to the return value (!ret 0).
+#
+# This is a standard library function with well-understood, deterministic
+# behavior, so no further recursive analysis of internal printer helpers
+# (newPrinter, doPrintln) was performed.
+
+dataflow-summaries:
+  - package: "fmt"
+    function: "Sprintln"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

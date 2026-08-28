@@ -1,0 +1,35 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  method: serve
+  package: net/http
+  receiver: '*conn'
+- flows: []
+  function: Handle
+  package: net/http
+- flows: []
+  function: HandleFunc
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: ListenAndServe
+  package: net/http
+- flows: []
+  function: NotFound
+  package: net/http
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: StatusText
+  package: net/http
+- flows:
+  - from: (!arg 1).URL.Path
+    to: '!arg 0'
+  - from: '!arg 2'
+    to: '!arg 0'
+  - from: '!arg 3'
+    to: '!arg 0'
+  function: Redirect
+  package: net/http

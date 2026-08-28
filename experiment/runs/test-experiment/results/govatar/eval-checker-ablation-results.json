@@ -1,0 +1,16 @@
+{
+  "rq": "checker-ablation",
+  "repo": "govatar",
+  "targets": [
+    {
+      "summary_name": "(*text/template.Template).Funcs",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*text/template.Template).Funcs",
+          "checker_method": "immutability"
+        }
+      ]
+    }
+  ]
+}

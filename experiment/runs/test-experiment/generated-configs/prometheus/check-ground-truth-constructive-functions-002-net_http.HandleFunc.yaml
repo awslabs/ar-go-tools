@@ -1,0 +1,17 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  check-specs:
+  - ../../../experiment/runs/test-experiment/generated-configs/prometheus/_constructive/functions-002-net_http.HandleFunc.yaml
+  summarize-on-demand: true
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/prometheus
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./examples/middleware/main.go
+  name: middleware

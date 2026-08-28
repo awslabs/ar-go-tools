@@ -1,0 +1,35 @@
+# net/http.Redirect(w ResponseWriter, r *Request, url string, code int)
+#
+# Analysis:
+# - `url` (arg 2) may be parsed/rewritten using pieces of the incoming request
+#   path (r.URL.Path) when it is a relative URL. The resulting (possibly
+#   modified) url string is written to the response via:
+#     * h.Set("Location", hexEscapeNonASCII(url))  -- header on w
+#     * body := "<a href=\"" + htmlEscape(url) + ...; fmt.Fprintln(w, body)
+#   So arg 2 (url) flows into arg 0 (w, the ResponseWriter).
+# - `r.URL.Path` (arg 1, field access path (!arg 1).URL.Path) is used to build
+#   the absolute url when the passed url is relative, and that combined value
+#   ends up written to w exactly like the incoming url string. So this field
+#   also flows into arg 0.
+# - `code` (arg 3) is written via w.WriteHeader(code) and also indirectly
+#   through StatusText(code) is embedded into the HTML body written to w.
+#   So arg 3 flows into arg 0.
+# - `r.Method` only affects control flow (which branches execute / whether
+#   headers or body are written) but no field of r.Method's *value* itself
+#   ends up copied into the output content, so it is not included as a
+#   dataflow (control-flow-only influence is not modeled here).
+# - w is an interface (http.ResponseWriter), so per interface rules we treat
+#   it field-insensitively as `!arg 0` (destination only, since it's the
+#   output sink here -- header/body are set on it, not read from it in a way
+#   that flows elsewhere).
+# - Redirect has no return values.
+dataflow-summaries:
+  - package: "net/http"
+    function: "Redirect"
+    flows:
+      - from: "!arg 2"
+        to: "!arg 0"
+      - from: "(!arg 1).URL.Path"
+        to: "!arg 0"
+      - from: "!arg 3"
+        to: "!arg 0"

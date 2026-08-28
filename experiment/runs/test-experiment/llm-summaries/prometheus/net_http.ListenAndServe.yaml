@@ -1,0 +1,37 @@
+# net/http.ListenAndServe(addr string, handler Handler) error
+#
+# Implementation:
+#   func ListenAndServe(addr string, handler Handler) error {
+#       server := &Server{Addr: addr, Handler: handler}
+#       return server.ListenAndServe()
+#   }
+#
+# This constructs a *Server with the given Addr and Handler, then calls
+# Server.ListenAndServe, which internally calls net.Listen(addr) and then
+# Server.Serve(listener) in a loop that blocks until an error occurs
+# (e.g. listener closed, accept error).
+#
+# Flow analysis:
+# - addr (!arg 0): passed to net.Listen. If listening fails (e.g. address
+#   already in use, invalid address, permission denied), the returned error
+#   from net.Listen wraps the address string into its Error() message
+#   (e.g. "listen tcp 127.0.0.1:99999: bind: ..."). This value is returned
+#   directly by ListenAndServe. Hence addr flows into the returned error.
+# - handler (!arg 1): stored in Server.Handler and invoked per accepted
+#   connection to serve requests. It does not influence the error value
+#   returned by ListenAndServe (Serve loop only returns on listener-level
+#   errors such as accept() failures or explicit shutdown, not from handler
+#   execution/panics, which are recovered internally per-connection and not
+#   surfaced through the return value). So no flow from handler to !ret 0.
+# - ListenAndServe always returns a non-nil error per doc; no other outputs.
+#
+# No incoming taint can reach "the outside world" further than the returned
+# error value, since the function has no other outputs (it blocks serving
+# connections until failure).
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "ListenAndServe"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

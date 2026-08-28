@@ -1,0 +1,31 @@
+# Reasoning:
+# func (e *P256Element) Square(t *P256Element) *P256Element {
+#     p256Square(&e.x, &t.x)
+#     return e
+# }
+#
+# P256Element has a single unexported field `x` (a fixed-size array type
+# p256MontgomeryDomainFieldElement) representing the integer value in
+# Montgomery domain. Square computes e.x = t.x * t.x (via the low-level
+# p256Square arithmetic routine) and returns e.
+#
+# Since the struct has only one field, and that field is entirely
+# overwritten based on the input's corresponding field, this is a
+# field-insensitive flow: the value of !arg 0 (t) flows into the receiver
+# (e), and since the receiver is both mutated and returned, it also flows
+# to the return value.
+#
+# No other inputs affect the output (p256Square is a pure arithmetic
+# function with no side effects beyond writing its output parameter).
+
+dataflow-summaries:
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "P256Element"
+    method: "Square"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 0"

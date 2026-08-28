@@ -1,0 +1,54 @@
+
+# net/http.Post(url, contentType string, body io.Reader) (resp *Response, err error)
+#
+# Post -> DefaultClient.Post -> (Client).Post -> NewRequest(url, body) then
+# req.Header.Set("Content-Type", contentType) then Client.Do(req).
+#
+# Tracing the two string arguments (url, contentType) and the io.Reader
+# argument (body):
+#
+# 1. url:
+#    - NewRequestWithContext parses url with url.Parse; on failure the
+#      resulting error (which embeds the offending URL text) is returned
+#      directly as the function's error result -> !arg 0 flows to !ret 1.
+#    - On success, the parsed *url.URL is stored in req.URL, and req is
+#      later exposed (unmodified in this respect by redirects/etc. for the
+#      purposes of this summary) as resp.Request. So !arg 0 flows to
+#      (!ret 0).Request.URL.
+#
+# 2. contentType:
+#    - Set verbatim via req.Header.Set("Content-Type", contentType), so it
+#      ends up in req.Header, later exposed as resp.Request.Header. So
+#      !arg 1 flows to (!ret 0).Request.Header.
+#
+# 3. body:
+#    - Wrapped (possibly via io.NopCloser) and stored as req.Body, but the
+#      godoc for http.Response.Request explicitly states: "Request's Body
+#      is nil (having already been consumed)" for the Request embedded in
+#      the returned Response. Hence body's contents do not reach any
+#      accessible field of the returned *Response through this path, and
+#      it is not otherwise reflected in resp or err (it is not parsed, and
+#      any errors from reading it occur asynchronously while the body is
+#      streamed to the server, not surfaced through Post's return values).
+#      No flow included for !arg 2.
+#
+# Response's other fields (StatusCode, Header, Body, Status, etc.) are
+# populated from server-provided data over the network, which is not
+# reachable input data for this summary, so no flows into those fields are
+# included.
+#
+# Field-sensitivity: url and contentType flow into distinct sub-fields of
+# resp.Request (URL vs Header) and not into the rest of *Response, so a
+# coarse "!arg -> !ret 0" flow would over-approximate; the field-sensitive
+# flows above are more precise while remaining sound.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "Post"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0).Request.URL"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!arg 1"
+        to: "(!ret 0).Request.Header"

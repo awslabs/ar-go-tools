@@ -1,0 +1,31 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  field-sensitive-funcs:
+  - .*
+  summarize-on-demand: true
+  taint-tracking:
+  - description: Untrusted data is being logged
+    sinks:
+    - method: Printf
+      package: fmt
+    - method: PutObject
+      package: .*
+    sources:
+    - method: ^Text$
+      package: bufio
+    tag: data-logging
+    targets:
+    - sample-main
+    unsafe-skip-bound-labels: true
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/sample
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./main.go
+  name: sample-main

@@ -1,0 +1,80 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  field-sensitive-funcs:
+  - .*
+  summarize-on-demand: true
+  taint-tracking:
+  - description: CLI output flag to file operations
+    sanitizers:
+    - method: Clean
+      package: path/filepath
+    severity: HIGH
+    sinks:
+    - method: Create
+      package: os
+    sources:
+    - method: String
+      package: github.com/urfave/cli/v2
+    tag: path-traversal
+    targets:
+    - govatar-cli
+  - description: CLI username to hash functions
+    severity: MEDIUM
+    sinks:
+    - method: Write
+      package: hash/fnv
+    sources:
+    - method: String
+      package: github.com/urfave/cli/v2
+    tag: username-injection
+    targets:
+    - govatar-cli
+  - description: CLI output flag controls image encoding format
+    severity: LOW
+    sinks:
+    - method: Encode
+      package: image/jpeg
+    - method: Encode
+      package: image/gif
+    - method: Encode
+      package: image/png
+    sources:
+    - method: String
+      package: github.com/urfave/cli/v2
+    tag: output-extension-to-encoder
+    targets:
+    - govatar-cli
+  - description: CLI positional args flow to log output
+    severity: MEDIUM
+    sinks:
+    - method: Fatal
+      package: log
+    sources:
+    - method: First
+      package: github.com/urfave/cli/v2
+    tag: cli-args-to-log
+    targets:
+    - govatar-cli
+  - description: Username controls PRNG seed for avatar generation
+    severity: LOW
+    sinks:
+    - method: NewSource
+      package: math/rand
+    sources:
+    - method: String
+      package: github.com/urfave/cli/v2
+    tag: username-to-prng-seed
+    targets:
+    - govatar-cli
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/govatar
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./govatar
+  name: govatar-cli

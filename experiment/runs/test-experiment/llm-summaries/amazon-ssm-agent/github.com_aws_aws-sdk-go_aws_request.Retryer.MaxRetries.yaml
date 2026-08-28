@@ -1,0 +1,27 @@
+# Interface method summary for request.Retryer.MaxRetries() int.
+#
+# MaxRetries() has no arguments and returns the number of times a request
+# may be retried before failing. Concrete implementations (e.g.
+# client.DefaultRetryer.MaxRetries) simply return a configuration field of
+# the receiver (DefaultRetryer.NumMaxRetries), i.e. the returned int is
+# derived directly from receiver state:
+#
+#     func (d DefaultRetryer) MaxRetries() int {
+#         return d.NumMaxRetries
+#     }
+#
+# Since this is an interface method summary, it must be field-insensitive
+# per the field-sensitivity rules for interfaces, so we use "!receiver"
+# directly rather than a field access path like "(!receiver).NumMaxRetries",
+# even though the only known concrete implementation reads a specific field.
+#
+# There are no other arguments, and the receiver is not mutated by this
+# method (it's a read-only accessor), so no other flows apply.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    interface: "Retryer"
+    method: "MaxRetries"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

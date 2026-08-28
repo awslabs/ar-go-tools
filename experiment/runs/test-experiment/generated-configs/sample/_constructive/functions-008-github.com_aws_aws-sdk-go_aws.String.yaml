@@ -1,0 +1,6 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: String
+  package: github.com/aws/aws-sdk-go/aws

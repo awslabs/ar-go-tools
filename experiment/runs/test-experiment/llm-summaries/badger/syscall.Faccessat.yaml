@@ -1,0 +1,32 @@
+# Analysis of syscall.Faccessat(dirfd int, path string, mode uint32, flags int) (err error)
+#
+# This function checks whether the calling process can access the file at
+# `path` with dirfd as directory file descriptor, using flags/mode as the
+# access-check parameters. It works by:
+#   - calling either faccessat(dirfd, path, mode) or faccessat2(dirfd, path,
+#     mode, flags) syscalls, or
+#   - falling back to fstatat(dirfd, path, &st, ...) to fetch file stat info
+#     and then comparing st.Mode/st.Uid/st.Gid against the current
+#     uid/gid/mode bits computed from Geteuid/Getuid/Getegid/Getgid and
+#     capability checks.
+#
+# In all paths, the returned error is one of a small set of fixed sentinel
+# errno values (nil, EINVAL, EACCES, ENOSYS, EPERM, or whatever the raw
+# syscall returns) - none of these carry the actual bytes of `path`, `mode`,
+# `dirfd`, or `flags` as data. The function only uses these inputs to decide
+# *which* fixed error value to return (control flow), not to construct the
+# content of the output. Per the task instructions, we track only actual
+# data flow into outputs, not control-flow influence on which fixed value is
+# chosen.
+#
+# There are no output parameters (pointers) that get written to by this
+# function that are part of its argument list (Stat_t is a local variable),
+# so there is no flow back into any argument either.
+#
+# Conclusion: no argument's data flows into the returned error's content.
+# Therefore this summary declares no data flows.
+
+dataflow-summaries:
+  - package: "syscall"
+    function: "Faccessat"
+    flows: []

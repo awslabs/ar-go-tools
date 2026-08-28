@@ -1,0 +1,45 @@
+# Analysis of github.com/aws/aws-sdk-go/service/s3.endpointARNGetter.hasEndpointARN
+#
+# endpointARNGetter is an internal interface in the s3 package:
+#   type endpointARNGetter interface {
+#       getEndpointARN() (arn.Resource, error)
+#       hasEndpointARN() bool
+#   }
+#
+# hasEndpointARN() bool is implemented by many *Input types (e.g. GetObjectInput,
+# CopyObjectInput, PutObjectInput, etc.), all following the same pattern, e.g.:
+#
+#   func (s *GetObjectInput) hasEndpointARN() bool {
+#       if s.Bucket == nil {
+#           return false
+#       }
+#       return arn.IsARN(*s.Bucket)
+#   }
+#
+# In every implementation examined, the returned boolean is entirely determined by
+# reading the receiver's Bucket field and checking whether it is formatted as an ARN
+# (arn.IsARN performs a prefix/format check on the string, i.e. a data-dependent
+# computation over the field's contents). No other inputs are involved (the method
+# takes no arguments). Per the interface-method summary rules, interface method
+# summaries must be field-insensitive and are expressed purely in terms of !receiver
+# and !ret, regardless of the concrete implementation's field access pattern (e.g. we
+# don't write "(!receiver).Bucket" even though every implementation only reads that
+# one field).
+#
+# Even though the return value is just a bool (a discriminator of ARN-ness) rather
+# than the raw string content, per policy 3e a flow is included whenever the output
+# value is actually determined by the input value, regardless of whether the flow
+# "looks" sensitive or informative. The receiver's data clearly determines the return
+# value here (arn.IsARN(*s.Bucket) is receiver-dependent and not a constant), so a
+# flow from !receiver to !ret 0 is included.
+#
+# There are no other outputs (no return-by-reference / mutation of the receiver, no
+# other return values), so this is the only flow present in this summary.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/service/s3"
+    interface: "endpointARNGetter"
+    method: "hasEndpointARN"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

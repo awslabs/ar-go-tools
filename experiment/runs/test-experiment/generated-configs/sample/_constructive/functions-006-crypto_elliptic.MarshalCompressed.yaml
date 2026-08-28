@@ -1,0 +1,10 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0)[*]
+  - from: '!arg 1'
+    to: (!ret 0)[*]
+  - from: '!arg 2'
+    to: (!ret 0)[*]
+  function: MarshalCompressed
+  package: crypto/elliptic

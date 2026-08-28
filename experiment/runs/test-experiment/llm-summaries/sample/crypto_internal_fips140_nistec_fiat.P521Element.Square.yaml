@@ -1,0 +1,46 @@
+## Dataflow summary for crypto/internal/fips140/nistec/fiat.(*P521Element).Square
+#
+# Source:
+#   func (e *P521Element) Square(t *P521Element) *P521Element {
+#       p521Square(&e.x, &t.x)
+#       return e
+#   }
+#
+# Analysis:
+# - Square computes e = t*t by calling p521Square(&e.x, &t.x). Inspecting the
+#   generated body of p521Square shows that every output limb (out1[0..8]) is
+#   computed purely as an arithmetic function of the input limbs (arg1[0..8],
+#   i.e. t.x's limbs), using bits.Mul64/Add64/Sub64 and conditional moves
+#   (p521CmovznzU64) - no other inputs (e.g. previous contents of e.x) affect
+#   the output. So all of t.x's limbs flow into all of e.x's limbs.
+# - P521Element has a single internal field `x` (a
+#   p521MontgomeryDomainFieldElement, i.e. a fixed-size array of uint64 limbs).
+#   Since arrays/slices are not tracked element-wise, and there is only one
+#   field on the struct, a field-insensitive flow from the whole argument to
+#   the whole receiver captures this precisely (no need for `.x` suffixes -
+#   there's nothing else to distinguish and field-sensitivity here adds no
+#   information, per guidance to avoid fragmenting non-field-sensitive flows).
+# - Square returns e itself (the receiver), so the receiver's data (which now
+#   depends on !arg 0) also flows to !ret 0. Additionally, since e's *previous*
+#   value (if aliased with itself, e.g. Square(x) called as x.Square(x)) does
+#   not affect the output, we don't add a flow from !receiver's old value to
+#   itself/!ret 0 based on prior contents - the summary only needs to capture
+#   that !arg 0 determines the outputs, and !receiver is trivially also
+#   returned.
+#
+# Flows:
+# - !arg 0 (t) -> !receiver (e.x is fully computed from t.x)
+# - !arg 0 (t) -> !ret 0 (Square returns e, which now holds the squared value)
+# - !receiver -> !ret 0 (the method returns the receiver pointer itself)
+
+dataflow-summaries:
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "P521Element"
+    method: "Square"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 0"

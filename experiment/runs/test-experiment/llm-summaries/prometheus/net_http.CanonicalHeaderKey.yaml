@@ -1,0 +1,19 @@
+# Analysis of net/http.CanonicalHeaderKey:
+#
+#   func CanonicalHeaderKey(s string) string { return textproto.CanonicalMIMEHeaderKey(s) }
+#
+# The function is a thin wrapper around textproto.CanonicalMIMEHeaderKey, which
+# canonicalizes the case of an HTTP header key string (capitalizing the first
+# letter and letters following hyphens, lowercasing the rest). If the input
+# contains invalid characters, it is returned unmodified. In all cases, the
+# returned string is derived entirely from the input argument s - there is no
+# other input (no receiver, no other args) and a single string return value.
+#
+# Therefore the only flow is from the single argument to the single return value.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "CanonicalHeaderKey"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

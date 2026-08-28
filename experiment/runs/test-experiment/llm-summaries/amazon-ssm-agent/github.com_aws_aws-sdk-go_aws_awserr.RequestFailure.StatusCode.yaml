@@ -1,0 +1,22 @@
+# RequestFailure is an interface in github.com/aws/aws-sdk-go/aws/awserr that
+# extends Error with StatusCode() int and RequestID() string.
+#
+# StatusCode() returns the HTTP status code associated with a failed request.
+# In all known implementations (e.g. the internal requestError type built by
+# NewRequestFailure), this value is simply a field set on the concrete type
+# (typically at construction time) and returned as-is with no further
+# transformation. Since this is an interface method summary, it must be
+# field-insensitive: the receiver is treated as a single unit, and the summary
+# states that data from the receiver (e.g. the status code stored within it)
+# flows to the return value.
+#
+# No arguments are present (StatusCode takes no parameters), so the only flow
+# is from the receiver to the return value.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/awserr"
+    interface: "RequestFailure"
+    method: "StatusCode"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

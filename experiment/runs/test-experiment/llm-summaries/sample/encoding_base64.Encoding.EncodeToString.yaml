@@ -1,0 +1,23 @@
+# EncodeToString(src []byte) string is implemented as:
+#   buf := make([]byte, enc.EncodedLen(len(src)))
+#   enc.Encode(buf, src)
+#   return string(buf)
+#
+# The receiver (*Encoding) only holds the encoding alphabet/padding configuration
+# (immutable lookup tables), which does not carry any tainted data from callers in
+# a meaningful dataflow sense, and is not mutated by this method - so no flow from
+# !receiver to !ret 0 is included.
+#
+# The argument `src []byte` is the actual data being encoded: its bytes directly
+# determine the contents of the returned base64 string via enc.Encode. Thus there
+# is a clear flow from !arg 0 to !ret 0.
+#
+# No other outputs exist (single return value, no mutation of receiver or argument).
+
+dataflow-summaries:
+  - package: "encoding/base64"
+    receiver: "*Encoding"
+    method: "EncodeToString"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

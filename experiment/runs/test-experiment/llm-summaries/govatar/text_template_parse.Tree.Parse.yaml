@@ -1,0 +1,72 @@
+# Dataflow summary for text/template/parse.(*Tree).Parse
+#
+# func (t *Tree) Parse(text, leftDelim, rightDelim string, treeSet map[string]*Tree,
+#                       funcs ...map[string]any) (tree *Tree, err error)
+#
+# Reasoning:
+#
+# - Parse sets t.text = text (arg 0), then calls t.parse(), which builds t.Root
+#   (a *ListNode tree of parsed Nodes) out of the tokens produced by lexing
+#   `text`. So the content of `text` ends up embedded in (!receiver).text and,
+#   transitively (via NewText/newAction/etc. nodes), in (!receiver).Root.
+#   -> flow: !arg 0 -> (!receiver).text
+#   -> flow: !arg 0 -> (!receiver).Root
+#
+# - The function returns `t` itself (`return t, nil`), i.e. the receiver is
+#   aliased to the first return value. Any field mutated on the receiver
+#   (including the ones derived from `text` above) is visible through the
+#   returned *Tree.
+#   -> flow: !receiver -> !ret 0
+#
+# - t.parse() handles nested {{define "name"}}...{{end}} blocks: for each one
+#   it creates a brand-new *Tree (newT), sets newT.text = t.text (i.e. derived
+#   from the original `text` argument), parses it, and calls newT.add(), which
+#   inserts newT into t.treeSet (== treeSet, arg 3), keyed by the parsed
+#   definition name. Also, at the end of the top-level Parse, t.add() inserts
+#   the top-level tree `t` itself into treeSet. Since map elements are not
+#   tracked individually, we taint the whole map:
+#   -> flow: !arg 0 -> !arg <treeSet 3>      (nested trees' content comes from text)
+#   -> flow: !receiver -> !arg <treeSet 3>   (the whole receiver `t` is stored into treeSet)
+#
+# - Error path: t.recover(&err) turns a panic (from t.errorf/t.error, invoked
+#   during parsing on malformed input) into the returned error. errorf's
+#   message embeds t.ParseName (== t.Name, a receiver field before the call)
+#   and can embed pieces of the offending token/text (e.g.
+#   "unexpected %s in ..." where %s is a token whose text comes from `text`).
+#   add()'s errorf ("multiple definition of template %q", t.Name) embeds
+#   t.Name, which for nested definitions is parsed out of `text` itself. Thus
+#   both the receiver's pre-existing identity and the input text can surface
+#   in the returned error string.
+#   -> flow: !arg 0 -> !ret 1
+#   -> flow: !receiver -> !ret 1
+#
+# - leftDelim / rightDelim (args 1, 2) only configure how the lexer recognizes
+#   action delimiters; they are stripped during tokenization and their
+#   content does not appear verbatim in the resulting tree, in treeSet, or in
+#   error messages. No flow is recorded for them.
+#
+# - funcs (variadic arg 4) is only used to check for the existence of function
+#   names (t.hasFunction, used to compute lexer options like breakOK) and is
+#   cleared in stopParse(); its content (the mapped values, i.e. the actual
+#   function implementations) is never copied into the tree, treeSet, or the
+#   error message. No flow is recorded for it.
+
+dataflow-summaries:
+  - package: "text/template/parse"
+    receiver: "*Tree"
+    method: "Parse"
+    flows:
+      - from: "!arg 0"
+        to: "(!receiver).text"
+      - from: "!arg 0"
+        to: "(!receiver).Root"
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!arg <treeSet 3>"
+      - from: "!receiver"
+        to: "!arg <treeSet 3>"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!receiver"
+        to: "!ret 1"

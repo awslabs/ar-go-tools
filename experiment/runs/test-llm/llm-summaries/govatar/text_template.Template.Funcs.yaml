@@ -1,0 +1,45 @@
+
+# Analysis of text/template.(*Template).Funcs
+#
+# func (t *Template) Funcs(funcMap FuncMap) *Template {
+#     t.init()
+#     t.muFuncs.Lock()
+#     defer t.muFuncs.Unlock()
+#     addValueFuncs(t.execFuncs, funcMap)
+#     addFuncs(t.parseFuncs, funcMap)
+#     return t
+# }
+#
+# - addValueFuncs copies each entry of the input FuncMap (funcMap, a
+#   map[string]any of functions) into t.execFuncs (a
+#   map[string]reflect.Value), after converting via reflect.ValueOf. This is a
+#   direct copy of the function values supplied by the caller into an internal
+#   field of the receiver.
+# - addFuncs copies each entry of funcMap into t.parseFuncs (map[string]any)
+#   directly, again a straight copy of the caller-supplied data into an
+#   internal field of the receiver.
+# - Both t.execFuncs and t.parseFuncs are unexported fields of *Template that
+#   are not individually addressable/reachable through the summary format
+#   (maps aren't tracked element-wise anyway, per the tool's map-handling
+#   rules), so we represent this mutation as a flow from !arg 0 into the
+#   receiver as a whole (!receiver), which is the closest sound
+#   representation of "the argument's data is now stored inside the
+#   receiver's internal state" and will propagate to any code that later
+#   invokes these stored functions using data derived from the receiver.
+# - The method returns t itself (the same receiver pointer), so !receiver
+#   flows to !ret 0.
+# - There is no flow from !arg 0 directly to !ret 0 other than via the
+#   receiver identity above (funcMap's function values are stored, not
+#   directly returned), but since !receiver -> !ret 0 already captures the
+#   identity return and !arg 0 -> !receiver captures the mutation, that
+#   composition is sufficient and sound.
+
+dataflow-summaries:
+  - package: "text/template"
+    receiver: "*Template"
+    method: "Funcs"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!receiver"
+        to: "!ret 0"

@@ -1,0 +1,34 @@
+# VerifyChecksum verifies checksum for all blocks of the table.
+# It takes no arguments other than the receiver (*Table), and returns
+# a single value: an error.
+#
+# Analysis:
+# - `t.fetchIndex()` and the loop bound `ti.OffsetsLength()` derive from
+#   receiver-internal state; they only affect loop control flow, not
+#   values propagated to the return in a way separate from what's noted
+#   below.
+# - `t.block(i, true)` reads block data from the table (receiver-derived
+#   data, ultimately backed by the table's file/mmap content) and can
+#   return an error.
+# - On error, `y.Wrapf(err, "...%s...%d...", t.Filename(), i, b.offset)`
+#   builds a wrapped error whose message embeds `t.Filename()` (derived
+#   from the receiver) and `b.offset` (derived from block data read from
+#   the receiver's underlying table file). This ties the returned error's
+#   content back to receiver-held data.
+# - `b.verifyCheckSum()` validates the block's checksum against its data,
+#   producing an error (wrapped the same way) if verification fails; this
+#   error content is also derived from receiver/block data.
+# - There is no external argument to this method (only the receiver), so
+#   the only meaningful flow to model is from the receiver to the
+#   returned error.
+#
+# Since VerifyChecksum has no non-receiver arguments, the only sound and
+# precise flow is: receiver -> return value 0 (error).
+
+dataflow-summaries:
+  - package: "github.com/dgraph-io/badger/v4/table"
+    receiver: "*Table"
+    method: "VerifyChecksum"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

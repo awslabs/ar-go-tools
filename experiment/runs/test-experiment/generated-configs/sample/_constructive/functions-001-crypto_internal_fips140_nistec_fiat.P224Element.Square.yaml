@@ -1,0 +1,11 @@
+dataflow-summaries:
+- flows:
+  - from: (!receiver).x
+    to: (!ret 0).x
+  - from: (!arg 0).x
+    to: (!receiver).x
+  - from: (!arg 0).x
+    to: (!ret 0).x
+  method: Square
+  package: crypto/internal/fips140/nistec/fiat
+  receiver: '*P224Element'

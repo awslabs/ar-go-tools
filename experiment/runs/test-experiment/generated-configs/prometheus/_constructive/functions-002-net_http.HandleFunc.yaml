@@ -1,0 +1,4 @@
+dataflow-summaries:
+- flows: []
+  function: HandleFunc
+  package: net/http

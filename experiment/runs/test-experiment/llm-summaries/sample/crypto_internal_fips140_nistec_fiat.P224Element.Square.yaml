@@ -1,0 +1,41 @@
+# Analysis of crypto/internal/fips140/nistec/fiat.(*P224Element).Square
+#
+# Source:
+#   func (e *P224Element) Square(t *P224Element) *P224Element {
+#       p224Square(&e.x, &t.x)
+#       return e
+#   }
+#
+# p224Square(out1, arg1) computes out1 = arg1 * arg1 (mod p) via field
+# arithmetic (bits.Mul64/Add64/Sub64 and conditional moves). Every output
+# limb of out1 is a pure function of the limbs of arg1 alone - there are no
+# other inputs. So the whole value of t.x (the unexported field storing
+# the Montgomery-domain representation) flows into e.x.
+#
+# Since t.x is the only field of P224Element (an internal representation
+# field, not further decomposable in a meaningful way for this analysis),
+# we treat the flow at the whole-argument/whole-receiver granularity:
+#   !arg 0 (t) -> !receiver (e), via the internal field x.
+#
+# The receiver e is also returned as !ret 0, so the same taint that reaches
+# the receiver also reaches the return value. Also the pre-existing value of
+# the receiver is irrelevant to the output (out1 is fully overwritten), so
+# there is no "!receiver -> !receiver" self flow needed beyond noting the
+# mutation source is !arg 0.
+#
+# Flows included:
+#   - !arg 0 -> !receiver   (t's internal representation is squared into e's)
+#   - !arg 0 -> !ret 0      (e, now containing t*t, is returned)
+#
+# No flow from !receiver (pre-call value) to !ret 0 or to !receiver's final
+# value, since Square fully overwrites e.x based only on t.
+
+dataflow-summaries:
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "*P224Element"
+    method: "Square"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!ret 0"

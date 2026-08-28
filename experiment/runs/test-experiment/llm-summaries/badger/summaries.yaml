@@ -1,0 +1,64 @@
+dataflow-summaries:
+- flows: []
+  function: Munmap
+  package: github.com/dgraph-io/ristretto/v2/z
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: mremap
+  package: github.com/dgraph-io/ristretto/v2/z
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  method: VerifyChecksum
+  package: github.com/dgraph-io/badger/v4/table
+  receiver: '*Table'
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  method: Encode
+  package: github.com/dgraph-io/badger/v4
+  receiver: valuePointer
+- flows: []
+  function: Memclr
+  package: github.com/dgraph-io/ristretto/v2/z
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  function: Append
+  package: fmt
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0).opt
+  - from: (!arg 0).EncryptionKey
+    to: (!ret 0).registry
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: Open
+  package: github.com/dgraph-io/badger/v4
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  - from: '!arg 2'
+    to: '!ret 0'
+  function: Appendf
+  package: fmt
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  function: Appendln
+  package: fmt
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  function: Sprintln
+  package: fmt
+- flows: []
+  function: Faccessat
+  package: syscall

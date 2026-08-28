@@ -1,0 +1,61 @@
+# Summary for github.com/dgraph-io/ristretto/v2/z.mremap
+#
+# NOTE ON METHODOLOGY: The argot tool chain (argot_reload_config / argot_load)
+# could not be used for this session: every attempt to load the requested
+# config file failed with an infrastructure error while trying to create a
+# "logs/argot" reports directory under the badger repository checkout
+# (permission/filesystem issue unrelated to the config content itself), e.g.:
+#   "could not create directory
+#    /usr/src/app/payload/public-repos-checks/badger/logs/argot"
+# This persisted across multiple retries and also blocked go_doc from
+# resolving the module (module context comes from the loaded program).
+# Direct filesystem access to the badger/ristretto checkout was also blocked
+# by the file tools' directory sandboxing. The summary below is therefore
+# based on knowledge of this well-known package's implementation
+# (github.com/dgraph-io/ristretto/v2/z, mmap_linux.go), reconstructed from
+# memory of the source:
+#
+#   func mremap(data []byte, size int) ([]byte, error) {
+#       header := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+#       mmapAddr, mmapSize, errno := remap(header.Data, uintptr(header.Len), uintptr(size))
+#       if errno != 0 { return nil, errno }
+#       var newData []byte
+#       dh := (*reflect.SliceHeader)(unsafe.Pointer(&newData))
+#       dh.Data = mmapAddr
+#       dh.Len = int(mmapSize)
+#       dh.Cap = dh.Len
+#       return newData, nil
+#   }
+#
+# `mremap` is a thin wrapper around the Linux mremap(2) syscall used to grow
+# or shrink an existing memory mapping obtained from mmap(2). The kernel
+# preserves the contents of the original mapping (up to the smaller of the
+# old/new sizes) and may return the same or a different virtual address; the
+# function reinterprets that (possibly moved) memory region as a new []byte
+# via an unsafe reflect.SliceHeader construction and returns it.
+#
+# Flow analysis:
+# - `data` (!arg 0): This is the backing memory of the mapping being resized.
+#   Because mremap preserves the underlying bytes (the returned slice is
+#   effectively the *same* memory, potentially relocated by the kernel), the
+#   content of `data` flows into the returned slice's content. Modeled as
+#   !arg 0 -> !ret 0.
+# - `size` (!arg 1): Only used to compute the *length* of the resulting
+#   mapping/slice (passed to the syscall as the new mapping size, and used to
+#   set the Len/Cap fields of the new slice header). It does not determine
+#   any byte *value* placed into the returned slice - it only affects how
+#   many bytes are exposed (any newly-exposed bytes are freshly-mapped kernel
+#   pages, not derived from the `size` value itself). Since this tool's
+#   model does not track slice length/shape as tainted "data", no flow from
+#   !arg 1 to !ret 0 is included.
+# - `!ret 1` (error): The error return comes from the syscall's errno, which
+#   is not influenced by the *content* of `data` or the numeric value of
+#   `size` (only by whether the underlying addresses/sizes are valid at the
+#   OS level). No taint flow is included to !ret 1.
+
+dataflow-summaries:
+  - package: "github.com/dgraph-io/ristretto/v2/z"
+    function: "mremap"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

@@ -1,0 +1,49 @@
+# Dataflow summary for net/http.ServeFile(w ResponseWriter, r *Request, name string)
+#
+# Reasoning:
+# - ServeFile splits `name` into dir/file and delegates to the internal serveFile,
+#   which opens the file, and eventually calls serveContent (for non-directory files)
+#   or dirList (for directories). In both cases the bytes/metadata associated with
+#   `name` (file content, size, modtime -> Last-Modified/Content-Length/ETag-ish
+#   headers, directory listing entries) are written into the ResponseWriter `w`.
+#   So `!arg 2` (name) flows to `!arg 0` (w), representing writes to the response
+#   (headers + body) derived from the served file.
+#
+# - `r` (the *Request) contributes data to the response in two concrete ways that
+#   are tracked here:
+#     1. r.URL.Path and r.URL.RawQuery: used by localRedirect (for the "/index.html"
+#        redirect, and for directory trailing-slash redirects) to build the
+#        "Location" response header (newPath = redirect path [+ "?" + RawQuery]),
+#        which is written to `w` via w.Header().Set("Location", newPath).
+#     2. r.Header: the incoming "Range" (and conditional) headers are parsed by
+#        checkPreconditions/parseRange inside serveContent and used to compute the
+#        "Content-Range" header value (byte offsets/length derived from the Range
+#        request), which is written back to `w`. This is a genuine, if narrow,
+#        data flow from request headers to response headers.
+#   Other r fields (Method, host, etc.) only affect control flow (e.g., whether the
+#   body is sent for HEAD requests, or which branch executes) without their values
+#   being written into the response, so they are not included.
+#
+# - r.URL is a *url.URL (concrete struct, not an interface), so field-sensitive
+#   access paths of depth 2 (e.g. (!arg 1).URL.Path) are used, respecting the
+#   max access-path length of 3. r.Header is of type http.Header (a map type), so
+#   it is treated as a single opaque tainted value ((!arg 1).Header) since we don't
+#   track flows through individual map elements.
+#
+# - w (ResponseWriter) is an interface; per the interface field-insensitivity rule,
+#   it is referenced purely as `!arg 0` with no further field access.
+#
+# - ServeFile has no return values, so there are no `!ret` flows.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "ServeFile"
+    flows:
+      - from: "!arg 2"
+        to: "!arg 0"
+      - from: "(!arg 1).URL.Path"
+        to: "!arg 0"
+      - from: "(!arg 1).URL.RawQuery"
+        to: "!arg 0"
+      - from: "(!arg 1).Header"
+        to: "!arg 0"

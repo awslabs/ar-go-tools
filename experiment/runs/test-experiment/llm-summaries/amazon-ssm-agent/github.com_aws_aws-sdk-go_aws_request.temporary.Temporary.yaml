@@ -1,0 +1,22 @@
+# github.com/aws/aws-sdk-go/aws/request.temporary is an interface:
+#
+#   type temporary interface {
+#       Temporary() bool
+#   }
+#
+# This is analogous to the standard net.Error.Temporary() method: any
+# implementation reports whether the error/receiver represents a temporary
+# condition. The returned bool is derived from (i.e. a function of) the
+# state of the receiver, so we record a flow from !receiver to !ret 0.
+# As with other interface method summaries (e.g. fmt.Stringer.String), this
+# is field-insensitive: the receiver is not decomposed into fields since we
+# don't know the concrete implementing type.
+# No arguments exist for this method, so no other flows apply.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    interface: "temporary"
+    method: "Temporary"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

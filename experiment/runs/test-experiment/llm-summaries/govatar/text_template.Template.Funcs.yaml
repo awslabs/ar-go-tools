@@ -1,0 +1,43 @@
+# text/template.(*Template).Funcs
+#
+# func (t *Template) Funcs(funcMap FuncMap) *Template {
+#     t.init()
+#     t.muFuncs.Lock()
+#     defer t.muFuncs.Unlock()
+#     addValueFuncs(t.execFuncs, funcMap)
+#     addFuncs(t.parseFuncs, funcMap)
+#     return t
+# }
+#
+# Analysis:
+# - funcMap (!arg 0) is a map of function values, which is copied (via
+#   addValueFuncs/addFuncs) into the template's internal function tables
+#   (t.execFuncs, t.parseFuncs). These are internal to the *Template receiver,
+#   not represented individually in the summary format, so this mutation is
+#   modeled as a flow from !arg 0 into !receiver. Later invocations of the
+#   template's Execute methods may call these functions with template data,
+#   so any downstream consumer relying on receiver state after Funcs should
+#   treat the receiver as tainted by the supplied funcMap.
+# - The method returns t itself (the same receiver pointer) to support
+#   method chaining, so !receiver flows to !ret 0. Since !arg 0 flows into
+#   !receiver, and !receiver flows to !ret 0, funcMap transitively affects
+#   !ret 0 as well; this is expressed via the two flows below, matching the
+#   compositional nature of the summary (no need for a direct !arg 0 -> !ret 0
+#   edge given the receiver already captures the same information, but we
+#   include it for clarity/soundness since !ret 0 is literally the same
+#   pointer as t, hence identical to !receiver post-mutation).
+#
+# No field-sensitivity is applicable here: FuncMap is a map type (opaque,
+# element-insensitive per instructions), and the internal fields of Template
+# affected are not exposed access paths we can name meaningfully beyond the
+# receiver itself.
+
+dataflow-summaries:
+  - package: "text/template"
+    receiver: "Template"
+    method: "Funcs"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!receiver"
+        to: "!ret 0"

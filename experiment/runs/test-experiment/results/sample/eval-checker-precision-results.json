@@ -1,0 +1,336 @@
+{
+  "rq": "checker-precision",
+  "repo": "sample",
+  "targets": [
+    {
+      "summary_name": "(*crypto/ecdsa.PrivateKey).Sign",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/ecdsa.PrivateKey).Sign",
+          "checker_soundness": "unsound"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+          "checker_soundness": "unsound"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P384Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P384Element).Square",
+          "checker_soundness": "unsound"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*encoding/base64.Encoding).EncodeToString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*encoding/base64.Encoding).EncodeToString",
+          "checker_soundness": "sound"
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/cipher.NewGCM",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/cipher.NewGCM",
+          "checker_soundness": "sound"
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.GenerateKey",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.GenerateKey",
+          "checker_soundness": "soundy"
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.MarshalCompressed",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.MarshalCompressed",
+          "checker_soundness": "soundy"
+        }
+      ]
+    },
+    {
+      "summary_name": "encoding/hex.DecodeString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "encoding/hex.DecodeString",
+          "checker_soundness": "sound"
+        }
+      ]
+    },
+    {
+      "summary_name": "github.com/aws/aws-sdk-go/aws.String",
+      "kind": "function",
+      "results": [
+        {
+          "name": "github.com/aws/aws-sdk-go/aws.String",
+          "checker_soundness": "sound"
+        }
+      ]
+    },
+    {
+      "summary_name": "io/ioutil.ReadFile",
+      "kind": "function",
+      "results": [
+        {
+          "name": "io/ioutil.ReadFile",
+          "checker_soundness": "error"
+        }
+      ]
+    },
+    {
+      "summary_name": "(fmt.Stringer).String",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(*strings.Builder).String",
+          "checker_soundness": "soundy"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.LogoutOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2DataFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.UnauthorizedException).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.InvalidRequestException).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetSessionTokenOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*os.ProcessState).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/service/s3.outpostAccessPointEndpointBuilder).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetFederationTokenOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2WindowUpdateFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.OutpostAccessPointARN).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*reflect.rtype).String",
+          "checker_soundness": "soundy"
+        },
+        {
+          "name": "(*bytes.Buffer).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2RSTStreamFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/url.Userinfo).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.GetRoleCredentialsOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2MetaHeadersFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2HeadersFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2ContinuationFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.IPAddr).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.S3ObjectLambdaAccessPointARN).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.EndEvent).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.RecordsEvent).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*math/big.Int).String",
+          "checker_soundness": "soundy"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.TooManyRequestsException).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ResourceNotFoundException).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2SettingsFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.UnixAddr).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2GoAwayFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.ContinuationEvent).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2PushPromiseFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2PingFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.UDPAddr).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/awserr.requestError).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithSAMLOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/internal/s3shared/s3err.RequestFailure).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountsOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/url.URL).String",
+          "checker_soundness": "soundy"
+        },
+        {
+          "name": "(*net/http.socksAddr).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithWebIdentityOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetAccessKeyInfoOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*flag.stringValue).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetCallerIdentityOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/awserr.baseError).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.TCPAddr).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.ProgressEvent).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.StatsEvent).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2writeData).String",
+          "checker_soundness": "soundy"
+        },
+        {
+          "name": "(*net/http.http2UnknownFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.DecodeAuthorizationMessageOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.PutObjectOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountRolesOutput).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2PriorityFrame).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.AccessPointARN).String",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.pattern).String",
+          "checker_soundness": "sound"
+        }
+      ]
+    }
+  ]
+}

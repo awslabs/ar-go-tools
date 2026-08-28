@@ -1,0 +1,36 @@
+# Reasoning:
+#
+# github.com/aws/amazon-ssm-agent/agent/log.BasicT is an interface:
+#
+#   type BasicT interface {
+#       // Tracef formats message according to format specifier
+#       // and writes to log with level Trace.
+#       Tracef(format string, params ...interface{})
+#   }
+#
+# Tracef(format string, params ...interface{}) has no return values, and the
+# only documented/implied effect is that the formatted message is written out
+# to a logging sink (file/console/etc.), which is an external effect not
+# modeled by dataflow summaries (we don't track flows into global/external
+# state such as log output streams).
+#
+# Since this is an interface method, the summary must hold for every possible
+# implementation of BasicT. We cannot soundly assume that every implementation
+# mutates receiver-visible state in an observable way (e.g. buffering the
+# message somewhere retrievable through another method), so per instructions
+# we should not invent such a flow. There is also no return value for data to
+# flow into.
+#
+# Attempts to load the actual program via argot_load/argot_reload_config
+# failed repeatedly with an environment/infrastructure error (unable to create
+# a reports directory), so this summary is based on the interface declaration
+# obtained via `go doc` rather than on inspecting concrete implementations in
+# the loaded SSA. Given the interface contract (format + variadic params in,
+# nothing out), no argument-to-return or argument-to-receiver flow can be
+# established, so the summary contains no flows.
+
+dataflow-summaries:
+  - package: "github.com/aws/amazon-ssm-agent/agent/log"
+    interface: "BasicT"
+    method: "Tracef"
+    flows: []

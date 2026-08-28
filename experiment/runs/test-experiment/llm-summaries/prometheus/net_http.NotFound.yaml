@@ -1,0 +1,26 @@
+# net/http.NotFound(w ResponseWriter, r *Request)
+#
+# Source:
+#   func NotFound(w ResponseWriter, r *Request) { Error(w, "404 page not found", StatusNotFound) }
+#
+# Analysis:
+# - NotFound simply delegates to http.Error(w, "404 page not found", StatusNotFound).
+# - The second argument `r` (*Request) is never referenced in the function body at all,
+#   so no data from `r` reaches any output (there is nothing to flow from it).
+# - `w` (ResponseWriter) is used only as a sink: Error calls w.Header() to delete/set a
+#   few fixed header values ("Content-Length" deleted, "Content-Type" and
+#   "X-Content-Type-Options" set to constant strings), calls w.WriteHeader(404) with the
+#   constant status code, and writes the constant string "404 page not found" via
+#   fmt.Fprintln(w, error). None of these written values are derived from `w`'s prior
+#   contents or from `r`; they are all compile-time constants local to Error/NotFound.
+# - There is no return value (function is void), and no argument's contents influence
+#   another argument's contents (the mutation of `w` is with constant data only).
+#
+# Conclusion: there is no meaningful/tracked dataflow from any input to any output for
+# this function (no !arg -> !arg, !arg -> !ret, or !receiver flows exist), so the summary
+# has an empty flow list.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "NotFound"
+    flows: []

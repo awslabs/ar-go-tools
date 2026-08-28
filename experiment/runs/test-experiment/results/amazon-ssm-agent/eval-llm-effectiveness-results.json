@@ -1,0 +1,58 @@
+{
+  "rq": "llm-effectiveness",
+  "repo": "amazon-ssm-agent",
+  "targets": [
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 11
+        }
+      ]
+    },
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "sound",
+          "llm_flow_count": 4,
+          "constructive_flow_count": 16,
+          "excess_flow_count": 0
+        }
+      ]
+    },
+    {
+      "summary_name": "github.com/aws/aws-sdk-go/aws.mergeInConfig",
+      "kind": "function",
+      "results": [
+        {
+          "name": "github.com/aws/aws-sdk-go/aws.mergeInConfig",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "unsound",
+          "llm_flow_count": 31
+        }
+      ]
+    },
+    {
+      "summary_name": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+          "reachable_implementation_count": 10,
+          "checker_soundness": "soundy",
+          "llm_flow_count": 1,
+          "constructive_flow_count": 1,
+          "excess_flow_count": 0
+        }
+      ]
+    }
+  ]
+}

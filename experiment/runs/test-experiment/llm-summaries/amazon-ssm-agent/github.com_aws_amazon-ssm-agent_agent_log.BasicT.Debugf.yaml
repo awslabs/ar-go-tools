@@ -1,0 +1,35 @@
+# Dataflow summary for github.com/aws/amazon-ssm-agent/agent/log.BasicT.Debugf
+#
+# BasicT is an interface (log.BasicT), matching seelog.LoggerInterface, and
+# Debugf is one of its methods:
+#
+#   Debugf(format string, params ...interface{})
+#
+# Behavior: Debugf formats `format` with `params` (like fmt.Sprintf) and
+# writes the resulting message to the underlying log sink (e.g. seelog
+# logger, file/console writer, etc.). This is a terminal sink operation:
+#   - It has no return values.
+#   - It does not return any value derived from its arguments.
+#   - The receiver (the logger object itself) is not returned or exposed via
+#     any other argument, so there is no way for tainted data flowing into
+#     !arg 0 / !arg 1 (params) to propagate back out to any caller-visible
+#     value (no !ret, no mutated argument, no field of an argument passed by
+#     reference that the caller could observe through this call itself).
+#
+# Since this is an interface method summary, it must be field-insensitive
+# (per the field-sensitivity/interface rules) and must hold across all
+# possible implementations of log.BasicT. Because Debugf's only effect
+# observable through its signature is writing to an internal/external log
+# sink (not represented in this summary format, and not a caller-visible
+# return or argument mutation), there are no from/to flows to record: the
+# format string and variadic params are consumed by the logging
+# implementation but do not flow to any return value or back into any
+# argument.
+#
+# Therefore this summary intentionally contains no flows entries.
+
+dataflow-summaries:
+  - package: "github.com/aws/amazon-ssm-agent/agent/log"
+    interface: "BasicT"
+    method: "Debugf"
+    flows: []

@@ -1,0 +1,28 @@
+{
+  "rq": "checker-efficiency",
+  "repo": "badger",
+  "targets": [
+    {
+      "summary_name": "fmt.Append",
+      "kind": "function",
+      "results": [
+        {
+          "name": "fmt.Append",
+          "checker_seconds": 0.000046988,
+          "constructive_seconds": 76.979415748
+        }
+      ]
+    },
+    {
+      "summary_name": "fmt.Sprintln",
+      "kind": "function",
+      "results": [
+        {
+          "name": "fmt.Sprintln",
+          "checker_seconds": 0.000019114,
+          "constructive_seconds": 86.934170055
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+dataflow-summaries:
+- flows:
+  - from: (!arg 1).URL.Path
+    to: '!arg 0'
+  - from: '!arg 2'
+    to: '!arg 0'
+  - from: '!arg 3'
+    to: '!arg 0'
+  function: Redirect
+  package: net/http

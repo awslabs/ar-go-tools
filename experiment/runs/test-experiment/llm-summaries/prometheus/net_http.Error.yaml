@@ -1,0 +1,32 @@
+# net/http.Error(w ResponseWriter, error string, code int)
+#
+# Source:
+#   h := w.Header()
+#   h.Del("Content-Length")
+#   h.Set("Content-Type", "text/plain; charset=utf-8")
+#   h.Set("X-Content-Type-Options", "nosniff")
+#   w.WriteHeader(code)
+#   fmt.Fprintln(w, error)
+#
+# Analysis:
+# - `w` (!arg 0) is an http.ResponseWriter interface. The function mutates it
+#   (headers set/deleted, WriteHeader called, and the error string written via
+#   fmt.Fprintln). Since ResponseWriter is an interface, we treat any flow into
+#   it as field-insensitive (!arg 0 as a whole).
+# - `error` (!arg 1) is written to `w` via fmt.Fprintln(w, error) -- this is
+#   the actual response body content, so it flows into !arg 0.
+# - `code` (!arg 2) is passed to w.WriteHeader(code), so it also flows into
+#   !arg 0 (it determines the status code written to the response, which is
+#   state carried by the ResponseWriter).
+# - No return values (function returns nothing).
+# - No flow back out of !arg 0 since ResponseWriter has no accessible getters
+#   used here, and no other outputs exist.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "Error"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 2"
+        to: "!arg 0"

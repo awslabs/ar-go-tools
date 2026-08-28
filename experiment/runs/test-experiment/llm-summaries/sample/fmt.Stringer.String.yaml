@@ -1,0 +1,29 @@
+# fmt.Stringer is a standard interface:
+#   type Stringer interface { String() string }
+#
+# Semantically, String() is expected to produce a string representation of
+# the receiver's data. For essentially all implementations, the returned
+# string is derived from (some of) the receiver's fields/state -- e.g.
+# fmt.Sprintf("%v", ...) applied to receiver fields, or concatenation of
+# field values. Since this is an interface method summary, it must be
+# field-insensitive (interfaces/receivers here are not decomposed by field),
+# and it must hold generally across all/most implementations.
+#
+# Flow included:
+#   !receiver -> !ret 0
+#     The returned string is derived from the receiver's data in virtually
+#     every implementation of String(). This is the standard, expected
+#     flow for a Stringer implementation and is both sound (captures actual
+#     data dependency) and precise enough (doesn't add spurious flows, since
+#     String() takes no arguments).
+#
+# No arguments exist on String() other than the receiver, so there are no
+# other flows to consider.
+
+dataflow-summaries:
+  - package: "fmt"
+    interface: "Stringer"
+    method: "String"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

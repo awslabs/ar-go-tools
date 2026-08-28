@@ -1,0 +1,37 @@
+# Analysis of github.com/aws/aws-sdk-go/aws/awsutil.rcopy
+#
+# Signature: func rcopy(dst, src reflect.Value, root bool)
+#
+# This function performs a recursive deep copy from `src` (a reflect.Value
+# wrapping the source data) into `dst` (a reflect.Value wrapping the
+# destination, which must be addressable/settable). It recurses through
+# pointers, structs (field by field via FieldByName), slices (element by
+# element), and maps (key/value pairs), and for scalar/leaf kinds it does
+# a direct `dst.Set(src)` when assignable.
+#
+# Because reflect.Value is essentially an opaque handle onto the underlying
+# data (its own fields - typ/ptr/flag - are unexported and not meaningful
+# access paths for taint purposes), the effective, sound data flow is: all
+# data reachable from `src` ends up written into the memory referenced by
+# `dst`. This is a mutation-style flow from arg 1 (src) into arg 0 (dst),
+# since dst is later observed by the caller through the original object it
+# was obtained from (via reflect, e.g. dst was constructed from
+# reflect.ValueOf(&destStruct).Elem()).
+#
+# The `root` boolean (arg 2) only controls internal recursion behavior
+# (e.g., special-casing time.Time via pointers) and does not carry any
+# external data itself, so it has no flow to outputs.
+#
+# There is no return value for this function.
+#
+# Given the opaque/reflective nature of reflect.Value, we do not attempt
+# field-sensitivity on dst/src (their real "fields" are the fields of the
+# concrete Go values they wrap, discovered dynamically via reflection, which
+# cannot be statically named as access paths here).
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/awsutil"
+    function: "rcopy"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"

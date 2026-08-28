@@ -1,0 +1,33 @@
+# Analysis of text/tabwriter.Writer.Flush:
+#
+# Flush() just calls the internal flush(), which (via flushNoDefers) calls
+# b.format(...) and ultimately b.writeLines(...)/writeN(...)/write0(...).
+# write0 does: `b.output.Write(buf)` where `buf` is a slice taken from
+# b.buf/b.cell/newline/padding bytes -- i.e. data that was buffered inside the
+# receiver by prior calls to Writer.Write (which store incoming bytes into the
+# unexported fields buf/lines/cell). Flush's job is precisely to push that
+# already-buffered, potentially-tainted state out through the receiver's own
+# `output io.Writer` field.
+#
+# Since `output` is an interface-typed field, per the interface field rule we
+# stop at that field (no deeper access path) and treat it field-insensitively
+# as a call target/sink. The relevant flow is therefore a "self" flow on the
+# receiver: from the receiver (whose buffered fields hold previously-written,
+# possibly-tainted data) to the receiver's `output` field (through which that
+# data is written out via output.Write).
+#
+# We did not add a flow to the returned error (!ret 0): flush()'s error comes
+# from handlePanic wrapping an I/O error (e.g. io.ErrShortWrite or the
+# underlying Write's error) -- it reflects failure status only, and does not
+# carry/embed the buffered content itself.
+#
+# No other outputs exist (Flush takes no arguments beyond the receiver and
+# returns only the error).
+
+dataflow-summaries:
+  - package: "text/tabwriter"
+    receiver: "Writer"
+    method: "Flush"
+    flows:
+      - from: "!receiver"
+        to: "(!receiver).output"

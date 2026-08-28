@@ -1,0 +1,19 @@
+{
+  "dataflows": [
+    {
+      "tag": "credential-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/app/credentialrefresher/credentialrefresher.go:230:42",
+      "sink": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/agent/managedInstances/sharedCredentials/shared_Credentials.go:63:20"
+    },
+    {
+      "tag": "credential-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/app/credentialrefresher/credentialrefresher.go:230:42",
+      "sink": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/agent/managedInstances/sharedCredentials/shared_Credentials.go:63:20"
+    }
+  ],
+  "count_by_severity": {
+    "HIGH": 2
+  },
+  "report_path": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/logs/argot/overall-report-3628153456.json",
+  "duration_seconds": 168.37
+}

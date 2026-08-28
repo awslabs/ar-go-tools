@@ -1,0 +1,11 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!receiver'
+    to: '!ret 0'
+  method: Funcs
+  package: text/template
+  receiver: '*Template'

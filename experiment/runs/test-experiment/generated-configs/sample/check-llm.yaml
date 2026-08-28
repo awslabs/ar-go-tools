@@ -1,0 +1,17 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  check-specs:
+  - ../../../experiment/runs/test-experiment/llm-summaries/sample/summaries.yaml
+  summarize-on-demand: true
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/sample
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./main.go
+  name: sample-main

@@ -1,0 +1,20 @@
+{
+  "id": "test-llm",
+  "status": "complete",
+  "started_at": "2026-08-13T21:19:19.552244+00:00",
+  "command": [
+    "run-llm-summarization",
+    "--repo",
+    "govatar",
+    "--run-id",
+    "test-llm"
+  ],
+  "tasks": {
+    "run-llm-summarization:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-13T21:19:19.556087+00:00",
+      "finished_at": "2026-08-13T21:21:24.121312+00:00"
+    }
+  },
+  "finished_at": "2026-08-13T21:21:24.123033+00:00"
+}

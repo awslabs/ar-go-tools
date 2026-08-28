@@ -1,0 +1,67 @@
+{
+  "govatar-cli": [
+    {
+      "Func": "(*text/tabwriter.Writer).Write",
+      "SummaryName": "(*text/tabwriter.Writer).Write",
+      "Want": {
+        "(!arg 0)[*]": [
+          "!ret 0",
+          "(!receiver).buf"
+        ]
+      },
+      "Got": {
+        "!arg <buf 0>": [
+          "!ret 0",
+          "(!receiver).buf",
+          "(!receiver).cell.htab",
+          "(!receiver).cell.size",
+          "(!receiver).cell.width",
+          "(!receiver).endChar",
+          "(!receiver).flags",
+          "(!receiver).lines",
+          "(!receiver).minwidth",
+          "(!receiver).output",
+          "(!receiver).padbytes",
+          "(!receiver).padding",
+          "(!receiver).pos",
+          "(!receiver).tabwidth",
+          "(!receiver).widths"
+        ],
+        "(!receiver).buf": [
+          "(!receiver).pos"
+        ],
+        "(!receiver).minwidth": [
+          "(!receiver).widths"
+        ],
+        "(!receiver).padding": [
+          "(!receiver).widths"
+        ],
+        "(!receiver).widths": [
+          "(!receiver).lines"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "DataflowFeatures": {
+          "RecoverUsages": [
+            {
+              "Filename": "/usr/local/go/src/text/tabwriter/tabwriter.go",
+              "Offset": 14867,
+              "Line": 471,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/text/template/funcs.go",
+              "Offset": 11275,
+              "Line": 367,
+              "Column": 18
+            }
+          ],
+          "TimedOut": true
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 1570790455938
+    }
+  ]
+}

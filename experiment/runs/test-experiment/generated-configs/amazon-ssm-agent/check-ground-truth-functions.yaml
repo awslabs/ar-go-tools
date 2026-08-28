@@ -1,0 +1,23 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  check-specs:
+  - ../../../experiment/ground-truth-summaries/amazon-ssm-agent/functions.yaml
+  summarize-on-demand: true
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/amazon-ssm-agent
+  report-paths: true
+  reports-dir: logs/argot
+pointer-config:
+  unsafe-no-effect-functions:
+  - fmt.Errorf
+  - log.Errorf
+targets:
+- files:
+  - core/agent.go
+  - core/agent_unix.go
+  - core/agent_parser.go
+  name: amazon-ssm-agent-unix

@@ -1,0 +1,24 @@
+# github.com/aws/aws-sdk-go/aws.String
+#
+# Note: the analysis environment's argot_load/argot_reload_config tool failed
+# repeatedly with an unrelated filesystem permission error (unable to create
+# a reports/logs directory), so the function could not be loaded and
+# inspected interactively. However, aws.String is a well-known, extremely
+# simple helper function in the AWS SDK for Go, whose full source is:
+#
+#   // String returns a pointer to the string value passed in.
+#   func String(v string) *string {
+#       return &v
+#   }
+#
+# It simply takes the input string value and returns a pointer to a copy of
+# that same value. There is exactly one dataflow: the input argument's data
+# flows directly (unmodified) into the returned pointer's pointee. No other
+# inputs, receivers, or side channels exist for this function.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws"
+    function: "String"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

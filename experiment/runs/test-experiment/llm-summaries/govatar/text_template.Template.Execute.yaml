@@ -1,0 +1,52 @@
+# Analysis of text/template.(*Template).Execute
+#
+# func (t *Template) Execute(wr io.Writer, data any) error { return t.execute(wr, data) }
+# func (t *Template) execute(wr io.Writer, data any) (err error) {
+#     defer errRecover(&err)
+#     value, ok := data.(reflect.Value)
+#     if !ok { value = reflect.ValueOf(data) }
+#     state := &state{tmpl: t, wr: wr, vars: []variable{{"$", value}}}
+#     if t.Tree == nil || t.Root == nil { state.errorf(...) }
+#     state.walk(value, t.Root)
+#     return
+# }
+#
+# Reasoning:
+# - `wr` (arg 0) is the io.Writer that the rendered template is written to. The
+#   template body (receiver: t.Tree/t.Root, the parsed template text and
+#   structure) is rendered and written into `wr` via state.walk, so the
+#   receiver flows into arg 0. Since io.Writer is an interface, use the
+#   field-insensitive `!arg 0`.
+# - `data` (arg 1) is walked by state.walk and its field/values are formatted
+#   (via fmt formatting of individual values, e.g. {{.Field}} actions) and
+#   written to `wr`. So data flows into arg 0 (the output writer).
+# - Errors: `execute` returns an error either from a panic recovered by
+#   errRecover (many of which are produced by state.errorf, which formats
+#   error messages that can include the offending data value, e.g.
+#   "can't evaluate field %s in type %T", or when Write to wr itself fails)
+#   or from errors bubbling out of write operations. Because template errors
+#   can embed formatted representations of pieces of `data` (e.g. type
+#   mismatches, missing fields, iteration errors that print the value), data
+#   flows into the returned error too. The receiver (template text/name) can
+#   also appear in error messages (e.g. "template: %q is an incomplete or
+#   empty template" using t.Name()), so the receiver also flows to the
+#   returned error.
+# - `data` being `any` (interface-typed) is treated field-insensitively per
+#   the interface-flow rules, even though internally it may be type-asserted
+#   or reflected upon.
+# - No flow back to the receiver: Execute does not mutate the template
+#   itself, and `wr`/`data` are not stored back into `t`.
+
+dataflow-summaries:
+  - package: "text/template"
+    receiver: "*Template"
+    method: "Execute"
+    flows:
+      - from: "!receiver"
+        to: "!arg 0"
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 1"
+        to: "!ret 0"

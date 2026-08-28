@@ -1,0 +1,9 @@
+dataflow-summaries:
+- flows:
+  - from: (!arg 0)[*]
+    to: (!receiver).buf
+  - from: (!arg 0)[*]
+    to: '!ret 0'
+  method: Write
+  package: text/tabwriter
+  receiver: '*Writer'

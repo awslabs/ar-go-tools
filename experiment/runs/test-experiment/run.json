@@ -1,0 +1,198 @@
+{
+  "id": "test-experiment",
+  "status": "complete",
+  "started_at": "2026-08-13T21:31:21.842783+00:00",
+  "command": [
+    "run-llm-summarization",
+    "--repo",
+    "all",
+    "--run-id",
+    "test-experiment"
+  ],
+  "tasks": {
+    "run-llm-summarization:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-13T21:31:21.846786+00:00",
+      "finished_at": "2026-08-13T21:37:38.158328+00:00"
+    },
+    "run-llm-summarization:badger": {
+      "status": "complete",
+      "started_at": "2026-08-13T21:37:38.158865+00:00",
+      "finished_at": "2026-08-13T21:46:07.549621+00:00"
+    },
+    "run-llm-summarization:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-13T21:46:07.550085+00:00",
+      "finished_at": "2026-08-13T21:47:48.576710+00:00"
+    },
+    "run-llm-summarization:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-13T21:47:48.577184+00:00",
+      "finished_at": "2026-08-13T21:51:11.377266+00:00"
+    },
+    "run-llm-summarization:sample": {
+      "status": "complete",
+      "started_at": "2026-08-13T21:51:11.377716+00:00",
+      "finished_at": "2026-08-13T21:53:26.106049+00:00"
+    },
+    "run-check:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-14T03:27:22.161512+00:00",
+      "finished_at": "2026-08-14T03:28:39.885057+00:00"
+    },
+    "run-check:badger": {
+      "status": "complete",
+      "started_at": "2026-08-14T03:28:39.885542+00:00",
+      "finished_at": "2026-08-14T03:29:03.722885+00:00"
+    },
+    "run-check:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-14T03:29:03.723342+00:00",
+      "finished_at": "2026-08-14T03:29:06.714873+00:00"
+    },
+    "run-check:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-14T03:29:06.715362+00:00",
+      "finished_at": "2026-08-14T03:29:20.243157+00:00"
+    },
+    "run-check:sample": {
+      "status": "complete",
+      "started_at": "2026-08-14T03:29:20.243764+00:00",
+      "finished_at": "2026-08-14T03:29:47.098740+00:00"
+    },
+    "run-taint-baseline:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-26T20:23:47.417845+00:00",
+      "finished_at": "2026-08-26T20:26:35.842872+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-baseline:badger": {
+      "status": "complete",
+      "started_at": "2026-08-26T20:26:35.843336+00:00",
+      "finished_at": "2026-08-26T20:39:56.920325+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-baseline:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-26T20:39:56.920824+00:00",
+      "finished_at": "2026-08-26T20:41:43.430944+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-baseline:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-26T20:41:43.431454+00:00",
+      "finished_at": "2026-08-26T20:56:36.551882+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-baseline:sample": {
+      "status": "complete",
+      "started_at": "2026-08-26T20:56:36.552380+00:00",
+      "finished_at": "2026-08-26T20:56:52.950244+00:00"
+    },
+    "run-constructive:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-28T04:36:38.575578+00:00",
+      "finished_at": "2026-08-28T05:04:39.856690+00:00"
+    },
+    "run-constructive:badger": {
+      "status": "complete",
+      "started_at": "2026-08-28T05:04:39.857185+00:00",
+      "finished_at": "2026-08-28T05:08:02.543525+00:00"
+    },
+    "run-constructive:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-28T05:08:02.544032+00:00",
+      "finished_at": "2026-08-28T05:34:16.559244+00:00"
+    },
+    "run-constructive:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-28T05:34:16.559825+00:00",
+      "finished_at": "2026-08-28T06:15:56.813037+00:00"
+    },
+    "run-constructive:sample": {
+      "status": "complete",
+      "started_at": "2026-08-28T06:15:56.813558+00:00",
+      "finished_at": "2026-08-28T06:18:56.321904+00:00"
+    },
+    "run-check-llm:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-14T16:21:44.970649+00:00",
+      "finished_at": "2026-08-14T16:23:46.417896+00:00"
+    },
+    "run-check-llm:badger": {
+      "status": "complete",
+      "started_at": "2026-08-14T16:23:46.418428+00:00",
+      "finished_at": "2026-08-14T16:25:14.527872+00:00"
+    },
+    "run-check-llm:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-14T16:25:14.528396+00:00",
+      "finished_at": "2026-08-14T16:25:18.184557+00:00"
+    },
+    "run-check-llm:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-14T16:25:18.185033+00:00",
+      "finished_at": "2026-08-14T16:25:51.268313+00:00"
+    },
+    "run-check-llm:sample": {
+      "status": "complete",
+      "started_at": "2026-08-14T16:25:51.268885+00:00",
+      "finished_at": "2026-08-14T16:26:21.560034+00:00"
+    },
+    "run-check-ground-truth:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-27T17:23:34.005951+00:00",
+      "finished_at": "2026-08-27T17:25:11.166956+00:00"
+    },
+    "run-check-ground-truth:badger": {
+      "status": "complete",
+      "started_at": "2026-08-27T17:25:11.167486+00:00",
+      "finished_at": "2026-08-27T17:25:39.729083+00:00"
+    },
+    "run-check-ground-truth:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-27T17:25:39.729704+00:00",
+      "finished_at": "2026-08-27T17:25:44.685823+00:00"
+    },
+    "run-check-ground-truth:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-27T17:25:44.686294+00:00",
+      "finished_at": "2026-08-27T17:26:01.375902+00:00"
+    },
+    "run-check-ground-truth:sample": {
+      "status": "complete",
+      "started_at": "2026-08-27T17:26:01.376358+00:00",
+      "finished_at": "2026-08-27T17:26:33.013457+00:00"
+    },
+    "run-taint-llm:amazon-ssm-agent": {
+      "status": "complete",
+      "started_at": "2026-08-26T19:33:08.070818+00:00",
+      "finished_at": "2026-08-26T19:35:29.862935+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-llm:badger": {
+      "status": "complete",
+      "started_at": "2026-08-26T19:35:29.863421+00:00",
+      "finished_at": "2026-08-26T19:48:42.773540+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-llm:govatar": {
+      "status": "complete",
+      "started_at": "2026-08-26T19:48:42.774038+00:00",
+      "finished_at": "2026-08-26T19:50:28.537232+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-llm:prometheus": {
+      "status": "complete",
+      "started_at": "2026-08-26T19:50:28.537805+00:00",
+      "finished_at": "2026-08-26T20:05:30.367230+00:00",
+      "error": "exit 1"
+    },
+    "run-taint-llm:sample": {
+      "status": "complete",
+      "started_at": "2026-08-26T20:05:30.367747+00:00",
+      "finished_at": "2026-08-26T20:05:46.757014+00:00"
+    }
+  },
+  "finished_at": "2026-08-28T06:18:56.322158+00:00"
+}

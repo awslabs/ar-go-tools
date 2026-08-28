@@ -1,0 +1,25 @@
+# Analysis of internal/stringslite.Clone
+#
+# func Clone(s string) string {
+#     if len(s) == 0 {
+#         return ""
+#     }
+#     b := make([]byte, len(s))
+#     copy(b, s)
+#     return unsafe.String(&b[0], len(b))
+# }
+#
+# This function makes a byte-for-byte copy of the input string's contents
+# into a new backing array and returns a new string header pointing to that
+# array. The returned string's content is fully determined by the input
+# string's content (a data copy), so there is a clear dataflow from the
+# argument to the return value. There are no other inputs/outputs (no
+# receiver, no other arguments, single return value), and no field-sensitivity
+# applies since string is not a struct type.
+
+dataflow-summaries:
+  - package: "internal/stringslite"
+    function: "Clone"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

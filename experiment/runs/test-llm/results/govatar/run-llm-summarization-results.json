@@ -1,0 +1,8 @@
+{
+  "repo": "govatar",
+  "duration_seconds": 124.49,
+  "summaries_path": "/Volumes/workplace/argot/experiment/runs/test-llm/llm-summaries/govatar/summaries.yaml",
+  "missing": [
+    "text_tabwriter.Writer.Write.yaml"
+  ]
+}

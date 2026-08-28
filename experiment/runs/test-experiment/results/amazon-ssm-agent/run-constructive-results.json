@@ -1,0 +1,2641 @@
+{
+  "amazon-ssm-agent-unix": [
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "SummaryName": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "Want": {
+        "!arg <data 2>": [
+          "!ret 0"
+        ],
+        "!arg <operation 0>": [
+          "!ret 0"
+        ],
+        "!arg <params 1>": [
+          "!ret 0"
+        ],
+        "(!receiver).ClientInfo": [
+          "!ret 0"
+        ],
+        "(!receiver).Config": [
+          "!ret 0"
+        ],
+        "(!receiver).Handlers": [
+          "!ret 0"
+        ],
+        "(!receiver).Retryer": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "error",
+      "Unsoundness": {
+        "BadForm": "failed to run the inter-procedural data flow analysis: at position 1\nat position 1",
+        "CheckFeatures": {
+          "HigherOrderVals": [
+            {
+              "Path": "c.Config.HTTPClient.CheckRedirect",
+              "Type": "func(req *net/http.Request, via []*net/http.Request) error"
+            },
+            {
+              "Path": "operation.BeforePresignFn",
+              "Type": "func(r *github.com/aws/aws-sdk-go/aws/request.Request) error"
+            },
+            {
+              "Path": "return value 0.Config.HTTPClient.CheckRedirect",
+              "Type": "func(req *net/http.Request, via []*net/http.Request) error"
+            }
+          ]
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 1300011426118
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+      "SummaryName": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+      "Want": {
+        "!arg 0": [
+          "(!receiver).FinalAWSException",
+          "(!receiver).FinalAWSExceptionMessage",
+          "(!receiver).FinalSDKException",
+          "(!receiver).FinalSDKExceptionMessage"
+        ]
+      },
+      "Got": {
+        "!arg <e 0>": [
+          "(!receiver).FinalAWSException",
+          "(!receiver).FinalAWSExceptionMessage",
+          "(!receiver).FinalSDKException",
+          "(!receiver).FinalSDKExceptionMessage"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 632721060
+    },
+    {
+      "Func": "github.com/aws/aws-sdk-go/aws.mergeInConfig",
+      "SummaryName": "github.com/aws/aws-sdk-go/aws.mergeInConfig",
+      "Want": {
+        "(!arg 1).Credentials": [
+          "(!arg 0).Credentials"
+        ],
+        "(!arg 1).CredentialsChainVerboseErrors": [
+          "(!arg 0).CredentialsChainVerboseErrors"
+        ],
+        "(!arg 1).DisableComputeChecksums": [
+          "(!arg 0).DisableComputeChecksums"
+        ],
+        "(!arg 1).DisableEndpointHostPrefix": [
+          "(!arg 0).DisableEndpointHostPrefix"
+        ],
+        "(!arg 1).DisableParamValidation": [
+          "(!arg 0).DisableParamValidation"
+        ],
+        "(!arg 1).DisableRestProtocolURICleaning": [
+          "(!arg 0).DisableRestProtocolURICleaning"
+        ],
+        "(!arg 1).DisableSSL": [
+          "(!arg 0).DisableSSL"
+        ],
+        "(!arg 1).EC2MetadataDisableTimeoutOverride": [
+          "(!arg 0).EC2MetadataDisableTimeoutOverride"
+        ],
+        "(!arg 1).EC2MetadataEnableFallback": [
+          "(!arg 0).EC2MetadataEnableFallback"
+        ],
+        "(!arg 1).EnableEndpointDiscovery": [
+          "(!arg 0).EnableEndpointDiscovery"
+        ],
+        "(!arg 1).Endpoint": [
+          "(!arg 0).Endpoint"
+        ],
+        "(!arg 1).EndpointResolver": [
+          "(!arg 0).EndpointResolver"
+        ],
+        "(!arg 1).EnforceShouldRetryCheck": [
+          "(!arg 0).EnforceShouldRetryCheck"
+        ],
+        "(!arg 1).HTTPClient": [
+          "(!arg 0).HTTPClient"
+        ],
+        "(!arg 1).LogLevel": [
+          "(!arg 0).LogLevel"
+        ],
+        "(!arg 1).Logger": [
+          "(!arg 0).Logger"
+        ],
+        "(!arg 1).LowerCaseHeaderMaps": [
+          "(!arg 0).LowerCaseHeaderMaps"
+        ],
+        "(!arg 1).MaxRetries": [
+          "(!arg 0).MaxRetries"
+        ],
+        "(!arg 1).Region": [
+          "(!arg 0).Region"
+        ],
+        "(!arg 1).Retryer": [
+          "(!arg 0).Retryer"
+        ],
+        "(!arg 1).S3Disable100Continue": [
+          "(!arg 0).S3Disable100Continue"
+        ],
+        "(!arg 1).S3DisableContentMD5Validation": [
+          "(!arg 0).S3DisableContentMD5Validation"
+        ],
+        "(!arg 1).S3ForcePathStyle": [
+          "(!arg 0).S3ForcePathStyle"
+        ],
+        "(!arg 1).S3UsEast1RegionalEndpoint": [
+          "(!arg 0).S3UsEast1RegionalEndpoint"
+        ],
+        "(!arg 1).S3UseARNRegion": [
+          "(!arg 0).S3UseARNRegion"
+        ],
+        "(!arg 1).S3UseAccelerate": [
+          "(!arg 0).S3UseAccelerate"
+        ],
+        "(!arg 1).STSRegionalEndpoint": [
+          "(!arg 0).STSRegionalEndpoint"
+        ],
+        "(!arg 1).SleepDelay": [
+          "(!arg 0).SleepDelay"
+        ],
+        "(!arg 1).UseDualStack": [
+          "(!arg 0).UseDualStack"
+        ],
+        "(!arg 1).UseDualStackEndpoint": [
+          "(!arg 0).UseDualStackEndpoint"
+        ],
+        "(!arg 1).UseFIPSEndpoint": [
+          "(!arg 0).UseFIPSEndpoint"
+        ]
+      },
+      "Got": {
+        "(!arg <dst 0>).Credentials.creds.AccessKeyID": [
+          "(!arg <other 1>).Credentials.creds.AccessKeyID"
+        ],
+        "(!arg <dst 0>).Credentials.creds.ProviderName": [
+          "(!arg <other 1>).Credentials.creds.ProviderName"
+        ],
+        "(!arg <dst 0>).Credentials.creds.SecretAccessKey": [
+          "(!arg <other 1>).Credentials.creds.SecretAccessKey"
+        ],
+        "(!arg <dst 0>).Credentials.creds.SessionToken": [
+          "(!arg <other 1>).Credentials.creds.SessionToken"
+        ],
+        "(!arg <dst 0>).Credentials.m.readerCount": [
+          "(!arg <other 1>).Credentials.m.readerCount"
+        ],
+        "(!arg <dst 0>).Credentials.m.readerSem": [
+          "(!arg <other 1>).Credentials.m.readerSem"
+        ],
+        "(!arg <dst 0>).Credentials.m.readerWait": [
+          "(!arg <other 1>).Credentials.m.readerWait"
+        ],
+        "(!arg <dst 0>).Credentials.m.w": [
+          "(!arg <other 1>).Credentials.m.w"
+        ],
+        "(!arg <dst 0>).Credentials.m.writerSem": [
+          "(!arg <other 1>).Credentials.m.writerSem"
+        ],
+        "(!arg <dst 0>).Credentials.provider": [
+          "(!arg <other 1>).Credentials.provider"
+        ],
+        "(!arg <dst 0>).Credentials.sf.m": [
+          "(!arg <other 1>).Credentials.sf.m"
+        ],
+        "(!arg <dst 0>).Credentials.sf.mu": [
+          "(!arg <other 1>).Credentials.sf.mu"
+        ],
+        "(!arg <dst 0>).CredentialsChainVerboseErrors": [
+          "(!arg <other 1>).CredentialsChainVerboseErrors"
+        ],
+        "(!arg <dst 0>).DisableComputeChecksums": [
+          "(!arg <other 1>).DisableComputeChecksums"
+        ],
+        "(!arg <dst 0>).DisableEndpointHostPrefix": [
+          "(!arg <other 1>).DisableEndpointHostPrefix"
+        ],
+        "(!arg <dst 0>).DisableParamValidation": [
+          "(!arg <other 1>).DisableParamValidation"
+        ],
+        "(!arg <dst 0>).DisableRestProtocolURICleaning": [
+          "(!arg <other 1>).DisableRestProtocolURICleaning"
+        ],
+        "(!arg <dst 0>).DisableSSL": [
+          "(!arg <other 1>).DisableSSL"
+        ],
+        "(!arg <dst 0>).EC2MetadataDisableTimeoutOverride": [
+          "(!arg <other 1>).EC2MetadataDisableTimeoutOverride"
+        ],
+        "(!arg <dst 0>).EC2MetadataEnableFallback": [
+          "(!arg <other 1>).EC2MetadataEnableFallback"
+        ],
+        "(!arg <dst 0>).EnableEndpointDiscovery": [
+          "(!arg <other 1>).EnableEndpointDiscovery"
+        ],
+        "(!arg <dst 0>).Endpoint": [
+          "(!arg <other 1>).Endpoint"
+        ],
+        "(!arg <dst 0>).EndpointResolver": [
+          "(!arg <other 1>).EndpointResolver"
+        ],
+        "(!arg <dst 0>).EnforceShouldRetryCheck": [
+          "(!arg <other 1>).EnforceShouldRetryCheck"
+        ],
+        "(!arg <dst 0>).HTTPClient.CheckRedirect": [
+          "(!arg <other 1>).HTTPClient.CheckRedirect"
+        ],
+        "(!arg <dst 0>).HTTPClient.Jar": [
+          "(!arg <other 1>).HTTPClient.Jar"
+        ],
+        "(!arg <dst 0>).HTTPClient.Timeout": [
+          "(!arg <other 1>).HTTPClient.Timeout"
+        ],
+        "(!arg <dst 0>).HTTPClient.Transport": [
+          "(!arg <other 1>).HTTPClient.Transport"
+        ],
+        "(!arg <dst 0>).LogLevel": [
+          "(!arg <other 1>).LogLevel"
+        ],
+        "(!arg <dst 0>).Logger": [
+          "(!arg <other 1>).Logger"
+        ],
+        "(!arg <dst 0>).LowerCaseHeaderMaps": [
+          "(!arg <other 1>).LowerCaseHeaderMaps"
+        ],
+        "(!arg <dst 0>).MaxRetries": [
+          "(!arg <other 1>).MaxRetries"
+        ],
+        "(!arg <dst 0>).Region": [
+          "(!arg <other 1>).Region"
+        ],
+        "(!arg <dst 0>).Retryer": [
+          "(!arg <other 1>).Retryer"
+        ],
+        "(!arg <dst 0>).S3Disable100Continue": [
+          "(!arg <other 1>).S3Disable100Continue"
+        ],
+        "(!arg <dst 0>).S3DisableContentMD5Validation": [
+          "(!arg <other 1>).S3DisableContentMD5Validation"
+        ],
+        "(!arg <dst 0>).S3ForcePathStyle": [
+          "(!arg <other 1>).S3ForcePathStyle"
+        ],
+        "(!arg <dst 0>).S3UsEast1RegionalEndpoint": [
+          "(!arg <other 1>).S3UsEast1RegionalEndpoint"
+        ],
+        "(!arg <dst 0>).S3UseARNRegion": [
+          "(!arg <other 1>).S3UseARNRegion"
+        ],
+        "(!arg <dst 0>).S3UseAccelerate": [
+          "(!arg <other 1>).S3UseAccelerate"
+        ],
+        "(!arg <dst 0>).STSRegionalEndpoint": [
+          "(!arg <other 1>).STSRegionalEndpoint"
+        ],
+        "(!arg <dst 0>).SleepDelay": [
+          "(!arg <other 1>).SleepDelay"
+        ],
+        "(!arg <dst 0>).UseDualStack": [
+          "(!arg <other 1>).UseDualStack"
+        ],
+        "(!arg <dst 0>).UseDualStackEndpoint": [
+          "(!arg <other 1>).UseDualStackEndpoint"
+        ],
+        "(!arg <dst 0>).UseFIPSEndpoint": [
+          "(!arg <other 1>).UseFIPSEndpoint"
+        ],
+        "(!arg <other 1>).Credentials.creds.AccessKeyID": [
+          "(!arg <dst 0>).Credentials.creds.AccessKeyID"
+        ],
+        "(!arg <other 1>).Credentials.creds.ProviderName": [
+          "(!arg <dst 0>).Credentials.creds.ProviderName"
+        ],
+        "(!arg <other 1>).Credentials.creds.SecretAccessKey": [
+          "(!arg <dst 0>).Credentials.creds.SecretAccessKey"
+        ],
+        "(!arg <other 1>).Credentials.creds.SessionToken": [
+          "(!arg <dst 0>).Credentials.creds.SessionToken"
+        ],
+        "(!arg <other 1>).Credentials.m.readerCount": [
+          "(!arg <dst 0>).Credentials.m.readerCount"
+        ],
+        "(!arg <other 1>).Credentials.m.readerSem": [
+          "(!arg <dst 0>).Credentials.m.readerSem"
+        ],
+        "(!arg <other 1>).Credentials.m.readerWait": [
+          "(!arg <dst 0>).Credentials.m.readerWait"
+        ],
+        "(!arg <other 1>).Credentials.m.w": [
+          "(!arg <dst 0>).Credentials.m.w"
+        ],
+        "(!arg <other 1>).Credentials.m.writerSem": [
+          "(!arg <dst 0>).Credentials.m.writerSem"
+        ],
+        "(!arg <other 1>).Credentials.provider": [
+          "(!arg <dst 0>).Credentials.provider"
+        ],
+        "(!arg <other 1>).Credentials.sf.m": [
+          "(!arg <dst 0>).Credentials.sf.m"
+        ],
+        "(!arg <other 1>).Credentials.sf.mu": [
+          "(!arg <dst 0>).Credentials.sf.mu"
+        ],
+        "(!arg <other 1>).CredentialsChainVerboseErrors": [
+          "(!arg <dst 0>).CredentialsChainVerboseErrors"
+        ],
+        "(!arg <other 1>).DisableComputeChecksums": [
+          "(!arg <dst 0>).DisableComputeChecksums"
+        ],
+        "(!arg <other 1>).DisableEndpointHostPrefix": [
+          "(!arg <dst 0>).DisableEndpointHostPrefix"
+        ],
+        "(!arg <other 1>).DisableParamValidation": [
+          "(!arg <dst 0>).DisableParamValidation"
+        ],
+        "(!arg <other 1>).DisableRestProtocolURICleaning": [
+          "(!arg <dst 0>).DisableRestProtocolURICleaning"
+        ],
+        "(!arg <other 1>).DisableSSL": [
+          "(!arg <dst 0>).DisableSSL"
+        ],
+        "(!arg <other 1>).EC2MetadataDisableTimeoutOverride": [
+          "(!arg <dst 0>).EC2MetadataDisableTimeoutOverride"
+        ],
+        "(!arg <other 1>).EC2MetadataEnableFallback": [
+          "(!arg <dst 0>).EC2MetadataEnableFallback"
+        ],
+        "(!arg <other 1>).EnableEndpointDiscovery": [
+          "(!arg <dst 0>).EnableEndpointDiscovery"
+        ],
+        "(!arg <other 1>).Endpoint": [
+          "(!arg <dst 0>).Endpoint"
+        ],
+        "(!arg <other 1>).EndpointResolver": [
+          "(!arg <dst 0>).EndpointResolver"
+        ],
+        "(!arg <other 1>).EnforceShouldRetryCheck": [
+          "(!arg <dst 0>).EnforceShouldRetryCheck"
+        ],
+        "(!arg <other 1>).HTTPClient.CheckRedirect": [
+          "(!arg <dst 0>).HTTPClient.CheckRedirect"
+        ],
+        "(!arg <other 1>).HTTPClient.Jar": [
+          "(!arg <dst 0>).HTTPClient.Jar"
+        ],
+        "(!arg <other 1>).HTTPClient.Timeout": [
+          "(!arg <dst 0>).HTTPClient.Timeout"
+        ],
+        "(!arg <other 1>).HTTPClient.Transport": [
+          "(!arg <dst 0>).HTTPClient.Transport"
+        ],
+        "(!arg <other 1>).LogLevel": [
+          "(!arg <dst 0>).LogLevel"
+        ],
+        "(!arg <other 1>).Logger": [
+          "(!arg <dst 0>).Logger"
+        ],
+        "(!arg <other 1>).LowerCaseHeaderMaps": [
+          "(!arg <dst 0>).LowerCaseHeaderMaps"
+        ],
+        "(!arg <other 1>).MaxRetries": [
+          "(!arg <dst 0>).MaxRetries"
+        ],
+        "(!arg <other 1>).Region": [
+          "(!arg <dst 0>).Region"
+        ],
+        "(!arg <other 1>).Retryer": [
+          "(!arg <dst 0>).Retryer"
+        ],
+        "(!arg <other 1>).S3Disable100Continue": [
+          "(!arg <dst 0>).S3Disable100Continue"
+        ],
+        "(!arg <other 1>).S3DisableContentMD5Validation": [
+          "(!arg <dst 0>).S3DisableContentMD5Validation"
+        ],
+        "(!arg <other 1>).S3ForcePathStyle": [
+          "(!arg <dst 0>).S3ForcePathStyle"
+        ],
+        "(!arg <other 1>).S3UsEast1RegionalEndpoint": [
+          "(!arg <dst 0>).S3UsEast1RegionalEndpoint"
+        ],
+        "(!arg <other 1>).S3UseARNRegion": [
+          "(!arg <dst 0>).S3UseARNRegion"
+        ],
+        "(!arg <other 1>).S3UseAccelerate": [
+          "(!arg <dst 0>).S3UseAccelerate"
+        ],
+        "(!arg <other 1>).STSRegionalEndpoint": [
+          "(!arg <dst 0>).STSRegionalEndpoint"
+        ],
+        "(!arg <other 1>).SleepDelay": [
+          "(!arg <dst 0>).SleepDelay"
+        ],
+        "(!arg <other 1>).UseDualStack": [
+          "(!arg <dst 0>).UseDualStack"
+        ],
+        "(!arg <other 1>).UseDualStackEndpoint": [
+          "(!arg <dst 0>).UseDualStackEndpoint"
+        ],
+        "(!arg <other 1>).UseFIPSEndpoint": [
+          "(!arg <dst 0>).UseFIPSEndpoint"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 2718,
+              "Line": 69,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 2939,
+              "Line": 78,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 3846,
+              "Line": 116,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 3889,
+              "Line": 117,
+              "Column": 35
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 4598,
+              "Line": 146,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 4998,
+              "Line": 159,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 5044,
+              "Line": 160,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 6203,
+              "Line": 203,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 6241,
+              "Line": 204,
+              "Column": 30
+            }
+          ]
+        },
+        "DataflowFeatures": {
+          "RecoverUsages": [
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/agent/log/ssmlog/ssmlog.go",
+              "Offset": 3956,
+              "Line": 129,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4484,
+              "Line": 123,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2826,
+              "Line": 77,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/agent/startup/serialport/serialport.go",
+              "Offset": 1854,
+              "Line": 57,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/ipc/messagebus/survey.go",
+              "Offset": 2904,
+              "Line": 86,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/workerprovider/longrunningprovider/provider/provider.go",
+              "Offset": 2524,
+              "Line": 73,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/workerprovider/longrunningprovider/longrunningprovider.go",
+              "Offset": 3316,
+              "Line": 102,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/filewatcherbasedipc/filewatcherchannel_unix.go",
+              "Offset": 1101,
+              "Line": 29,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/app/selfupdate/selfupdate.go",
+              "Offset": 6905,
+              "Line": 211,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/agent/managedInstances/fingerprint/fingerprint.go",
+              "Offset": 2422,
+              "Line": 93,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/workerprovider/longrunningprovider/longrunningprovider.go",
+              "Offset": 2552,
+              "Line": 77,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/filewatcherbasedipc/filewatcherchannel.go",
+              "Offset": 13953,
+              "Line": 453,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 5978,
+              "Line": 165,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/app/bootstrap/bootstrap.go",
+              "Offset": 2004,
+              "Line": 63,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/telemetry/telemetry.go",
+              "Offset": 1579,
+              "Line": 63,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/cihub/seelog/logger.go",
+              "Offset": 11172,
+              "Line": 307,
+              "Column": 20
+            }
+          ],
+          "GoUsages": [
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/processcreds/provider.go",
+              "Offset": 11861,
+              "Line": 372,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/processcreds/provider.go",
+              "Offset": 11861,
+              "Line": 372,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/aws/credentials/credentials.go",
+              "Offset": 10662,
+              "Line": 329,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/singleflight.go",
+              "Offset": 2409,
+              "Line": 90,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/common/channel/channel.go",
+              "Offset": 2777,
+              "Line": 75,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/src/app/payload/public-repos-checks/amazon-ssm-agent/core/agent.go",
+              "Offset": 4437,
+              "Line": 121,
+              "Column": 2
+            }
+          ],
+          "HasUnboundedDefers": true
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 198933765204
+    },
+    {
+      "Func": "(*net.timeoutError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 830084922
+    },
+    {
+      "Func": "(*net/url.Error).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Got": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 98371078
+    },
+    {
+      "Func": "(*internal/poll.DeadlineExceededError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 93466744
+    },
+    {
+      "Func": "(*crypto/tls.permanentError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 92112828
+    },
+    {
+      "Func": "(*net.temporaryError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 92286696
+    },
+    {
+      "Func": "(*net.OpError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Got": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 92355943
+    },
+    {
+      "Func": "(*net/http.http2httpError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 92535210
+    },
+    {
+      "Func": "(*net.DNSError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Got": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 91811708
+    },
+    {
+      "Func": "(*net.AddrError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 92150786
+    },
+    {
+      "Func": "(*net/http.timeoutError).Temporary",
+      "SummaryName": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 92453175
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# net/http.Handle(pattern string, handler Handler)
+#
+# Signature/source:
+#   func Handle(pattern string, handler Handler) {
+#       if use121 {
+#           DefaultServeMux.mux121.handle(pattern, handler)
+#       } else {
+#           DefaultServeMux.register(pattern, handler)
+#       }
+#   }
+#
+# Handle has no return values and no receiver. Its only effect is to store
+# the pattern/handler pair into the package-level global DefaultServeMux
+# (a *ServeMux), so that later, when the mux dispatches an incoming request,
+# it routes matching requests to the given handler.
+#
+# Per the summary-generation instructions, we do not track flows through
+# global variables (DefaultServeMux is a global), since globals are not
+# represented in the dataflow summary format. There is no argument-to-
+# return-value flow (function returns nothing) and no receiver (it's a
+# free function). Therefore there are no observable flows to record in
+# this summary format: !arg 0 (pattern) and !arg 1 (handler) only affect
+# global mux state, not any return value or receiver.
+#
+# Conclusion: empty flow set.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "Handle"
+    flows: []

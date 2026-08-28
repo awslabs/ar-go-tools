@@ -1,0 +1,9 @@
+{
+  "repo": "prometheus",
+  "duration_seconds": 202.75,
+  "summaries_path": "/usr/src/app/experiment/runs/test-experiment/llm-summaries/prometheus/summaries.yaml",
+  "missing": [
+    "net_http.conn.serve.yaml",
+    "github.com_prometheus_common_expfmt.MetricFamilyToOpenMetrics.yaml"
+  ]
+}

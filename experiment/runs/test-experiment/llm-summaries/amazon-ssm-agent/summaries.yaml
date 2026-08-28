@@ -1,0 +1,271 @@
+dataflow-summaries:
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  method: String
+  package: github.com/aws/amazon-ssm-agent/agent/plugins/downloadcontent/httpresource/handler/auth/digest
+  receiver: '*Authorization'
+- flows: []
+  interface: BasicT
+  method: Infof
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows: []
+  interface: BasicT
+  method: Tracef
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows: []
+  interface: BasicT
+  method: Debugf
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  interface: BasicT
+  method: Warnf
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  interface: BasicT
+  method: Errorf
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows: []
+  method: TruncateFields
+  package: github.com/aws/aws-sdk-go/aws/csm
+  receiver: '*metric'
+- flows:
+  - from: '!arg 0'
+    to: (!receiver).AWSException
+  - from: '!arg 0'
+    to: (!receiver).AWSExceptionMessage
+  - from: '!arg 0'
+    to: (!receiver).SDKException
+  - from: '!arg 0'
+    to: (!receiver).SDKExceptionMessage
+  method: SetException
+  package: github.com/aws/aws-sdk-go/aws/csm
+  receiver: metric
+- flows:
+  - from: '!arg 0'
+    to: (!receiver).FinalAWSException
+  - from: '!arg 0'
+    to: (!receiver).FinalAWSExceptionMessage
+  - from: '!arg 0'
+    to: (!receiver).FinalSDKException
+  - from: '!arg 0'
+    to: (!receiver).FinalSDKExceptionMessage
+  method: SetFinalException
+  package: github.com/aws/aws-sdk-go/aws/csm
+  receiver: '*metric'
+- flows:
+  - from: '!arg 1'
+    to: '!arg 0'
+  function: rcopy
+  package: github.com/aws/aws-sdk-go/aws/awsutil
+- flows:
+  - from: (!arg 0).Params
+    to: (!arg 0).HTTPRequest
+  - from: (!arg 0).Params
+    to: (!arg 0).Body
+  - from: (!arg 0).Params
+    to: (!arg 0).Error
+  function: Build
+  package: github.com/aws/aws-sdk-go/private/protocol/rest
+- flows:
+  - from: (!arg 0).HTTPResponse.Body
+    to: (!arg 0).Data
+  function: Unmarshal
+  package: github.com/aws/aws-sdk-go/private/protocol/rest
+- flows:
+  - from: (!arg 0).HTTPResponse
+    to: (!arg 0).RequestID
+  - from: (!arg 0).HTTPResponse
+    to: (!arg 0).Data
+  - from: (!arg 0).HTTPResponse
+    to: (!arg 0).Error
+  function: UnmarshalMeta
+  package: github.com/aws/aws-sdk-go/private/protocol/rest
+- flows:
+  - from: '!receiver'
+    to: '!receiver'
+  - from: '!receiver'
+    to: '!ret 0'
+  method: Send
+  package: github.com/aws/aws-sdk-go/aws/request
+  receiver: '*Request'
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0).Operation
+  - from: (!arg 0).HTTPMethod
+    to: (!ret 0).HTTPRequest
+  - from: (!arg 0).HTTPPath
+    to: (!ret 0).HTTPRequest
+  - from: '!arg 1'
+    to: (!ret 0).Params
+  - from: '!arg 2'
+    to: (!ret 0).Data
+  - from: (!receiver).Config
+    to: (!ret 0).Config
+  - from: (!receiver).ClientInfo
+    to: (!ret 0).ClientInfo
+  - from: (!receiver).ClientInfo
+    to: (!ret 0).HTTPRequest
+  - from: (!receiver).ClientInfo
+    to: (!ret 0).Error
+  - from: (!receiver).Handlers
+    to: (!ret 0).Handlers
+  - from: (!receiver).Retryer
+    to: (!ret 0).Retryer
+  method: NewRequest
+  package: github.com/aws/aws-sdk-go/aws/client
+  receiver: '*Client'
+- flows:
+  - from: (!arg 1).CredentialsChainVerboseErrors
+    to: (!arg 0).CredentialsChainVerboseErrors
+  - from: (!arg 1).Credentials
+    to: (!arg 0).Credentials
+  - from: (!arg 1).Endpoint
+    to: (!arg 0).Endpoint
+  - from: (!arg 1).EndpointResolver
+    to: (!arg 0).EndpointResolver
+  - from: (!arg 1).Region
+    to: (!arg 0).Region
+  - from: (!arg 1).DisableSSL
+    to: (!arg 0).DisableSSL
+  - from: (!arg 1).HTTPClient
+    to: (!arg 0).HTTPClient
+  - from: (!arg 1).LogLevel
+    to: (!arg 0).LogLevel
+  - from: (!arg 1).Logger
+    to: (!arg 0).Logger
+  - from: (!arg 1).MaxRetries
+    to: (!arg 0).MaxRetries
+  - from: (!arg 1).Retryer
+    to: (!arg 0).Retryer
+  - from: (!arg 1).DisableParamValidation
+    to: (!arg 0).DisableParamValidation
+  - from: (!arg 1).DisableComputeChecksums
+    to: (!arg 0).DisableComputeChecksums
+  - from: (!arg 1).S3ForcePathStyle
+    to: (!arg 0).S3ForcePathStyle
+  - from: (!arg 1).S3Disable100Continue
+    to: (!arg 0).S3Disable100Continue
+  - from: (!arg 1).S3UseAccelerate
+    to: (!arg 0).S3UseAccelerate
+  - from: (!arg 1).S3DisableContentMD5Validation
+    to: (!arg 0).S3DisableContentMD5Validation
+  - from: (!arg 1).S3UseARNRegion
+    to: (!arg 0).S3UseARNRegion
+  - from: (!arg 1).UseDualStack
+    to: (!arg 0).UseDualStack
+  - from: (!arg 1).UseDualStackEndpoint
+    to: (!arg 0).UseDualStackEndpoint
+  - from: (!arg 1).EC2MetadataDisableTimeoutOverride
+    to: (!arg 0).EC2MetadataDisableTimeoutOverride
+  - from: (!arg 1).EC2MetadataEnableFallback
+    to: (!arg 0).EC2MetadataEnableFallback
+  - from: (!arg 1).SleepDelay
+    to: (!arg 0).SleepDelay
+  - from: (!arg 1).DisableRestProtocolURICleaning
+    to: (!arg 0).DisableRestProtocolURICleaning
+  - from: (!arg 1).EnforceShouldRetryCheck
+    to: (!arg 0).EnforceShouldRetryCheck
+  - from: (!arg 1).EnableEndpointDiscovery
+    to: (!arg 0).EnableEndpointDiscovery
+  - from: (!arg 1).DisableEndpointHostPrefix
+    to: (!arg 0).DisableEndpointHostPrefix
+  - from: (!arg 1).STSRegionalEndpoint
+    to: (!arg 0).STSRegionalEndpoint
+  - from: (!arg 1).S3UsEast1RegionalEndpoint
+    to: (!arg 0).S3UsEast1RegionalEndpoint
+  - from: (!arg 1).LowerCaseHeaderMaps
+    to: (!arg 0).LowerCaseHeaderMaps
+  - from: (!arg 1).UseFIPSEndpoint
+    to: (!arg 0).UseFIPSEndpoint
+  function: mergeInConfig
+  package: github.com/aws/aws-sdk-go/aws
+- flows:
+  - from: '!arg <d 1>'
+    to: '!arg <v 0>'
+  - from: '!arg <d 1>'
+    to: '!ret 0'
+  function: UnmarshalXML
+  package: github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: Error
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: Code
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: OrigErr
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: Message
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Validator
+  method: Validate
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: temporary
+  method: Temporary
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  - from: '!receiver'
+    to: '!ret 1'
+  interface: endpointARNGetter
+  method: getEndpointARN
+  package: github.com/aws/aws-sdk-go/service/s3
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: endpointARNGetter
+  method: hasEndpointARN
+  package: github.com/aws/aws-sdk-go/service/s3
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  interface: Retryer
+  method: RetryRules
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  interface: Retryer
+  method: ShouldRetry
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Retryer
+  method: MaxRetries
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: RequestFailure
+  method: StatusCode
+  package: github.com/aws/aws-sdk-go/aws/awserr

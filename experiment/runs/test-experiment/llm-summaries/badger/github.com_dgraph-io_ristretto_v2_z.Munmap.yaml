@@ -1,0 +1,53 @@
+# Summary for github.com/dgraph-io/ristretto/v2/z.Munmap
+#
+# NOTE ON METHODOLOGY: As in the prior session (see the sibling summary for
+# `mremap` in this same package/directory), the argot tool chain
+# (argot_reload_config / argot_load) could not be used: every attempt to load
+# the requested config failed with an infrastructure error while trying to
+# create a "logs/argot" reports directory under the badger repository
+# checkout (permission/filesystem issue unrelated to the config content
+# itself), e.g.:
+#   "could not create directory
+#    /usr/src/app/payload/public-repos-checks/badger/logs/argot"
+# This persisted across multiple retries with different loading strategies
+# (config-based target load, plain paths load). `go_doc` also could not
+# resolve the module (it requires a module/build context that isn't
+# available without the program being loaded), failing with:
+#   "cannot find package ... (from $GOPATH)"
+# even for the bare package path. Direct filesystem access to the
+# badger/ristretto checkout was also blocked by the file tools' directory
+# sandboxing (read_file/list_files restricted to the output directory).
+#
+# The summary below is therefore based on knowledge of this well-known
+# package's implementation (github.com/dgraph-io/ristretto/v2/z,
+# mmap_unix.go), reconstructed from memory of the source:
+#
+#   // Munmap unmaps a previously mapped slice.
+#   func Munmap(b []byte) error {
+#       return unix.Munmap(b)
+#   }
+#
+# `Munmap` is a thin wrapper around the POSIX munmap(2) syscall (via
+# golang.org/x/sys/unix.Munmap). It uses the backing data pointer and length
+# of the slice `b` (i.e. its *shape*, not its byte *content*) to identify
+# which previously-mmapped virtual memory region to unmap, and returns
+# whatever error the kernel reports (e.g. EINVAL if the address/length pair
+# is not a valid mapping).
+#
+# Flow analysis:
+# - `b` (!arg 0): only its address/length are used to select which mapping
+#   to remove; the byte *contents* of `b` play no role in what is returned.
+#   This tool's model does not track slice length/shape as tainted "data",
+#   only content, so no flow from !arg 0's content to the returned error is
+#   modeled.
+# - `!ret 0` (error): determined purely by the outcome of the munmap(2)
+#   syscall (validity of the address/length at the OS level), not by the
+#   content of `b`. No taint flow into it from `!arg 0`.
+#
+# Conclusion: there is no content-based dataflow from the input to the
+# output of this function.
+
+dataflow-summaries:
+  - package: "github.com/dgraph-io/ristretto/v2/z"
+    function: "Munmap"
+    flows: []

@@ -1,0 +1,14 @@
+{
+  "rq": "workflow-efficiency",
+  "repo": "prometheus",
+  "summarization_seconds": 202.75,
+  "check_seconds": 17.74,
+  "taint_with_summaries_seconds": 901.79,
+  "taint_baseline_seconds": 893.09,
+  "constructive_seconds": 0.0,
+  "speedup_factor": 0.99,
+  "agentic_vs_constructive_speedup": null,
+  "dataflows_match": true,
+  "extra_dataflows_with_summaries": [],
+  "missing_dataflows_with_summaries": []
+}

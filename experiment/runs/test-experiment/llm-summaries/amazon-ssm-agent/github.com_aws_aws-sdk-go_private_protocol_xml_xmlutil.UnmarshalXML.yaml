@@ -1,0 +1,41 @@
+# UnmarshalXML(v interface{}, d *xml.Decoder, wrapper string) error
+#
+# Behavior:
+#   1. n, err := XMLToStruct(d, nil) reads all tokens from the xml.Decoder d
+#      and builds an XMLNode tree (n) whose Text/Attr/Children fields hold the
+#      textual content read from d. Any error from d.Token() (e.g. malformed
+#      XML) is returned directly, so d's content can influence the returned
+#      error.
+#   2. The code walks n.Children, optionally unwraps one level using `wrapper`
+#      (wrapper only *selects* which child node is used -- it does not
+#      contribute content to the parsed values), and calls parse(reflect.ValueOf(v), c, "").
+#   3. parse/parseStruct/parseList/parseMap/parseScalar use reflection to walk
+#      through v's structure and copy data taken from XMLNode.Text (ultimately
+#      derived from d) into v's fields. Hence v (arg 0) is mutated: the
+#      decoded XML content coming from d ends up stored inside v.
+#   4. parseScalar also returns errors built from node.Text when conversions
+#      fail, e.g. strconv.ParseBool(node.Text), strconv.ParseInt(node.Text,..),
+#      strconv.ParseFloat(node.Text,..), base64.StdEncoding.DecodeString(node.Text),
+#      protocol.ParseTime(format, node.Text). These errors embed the offending
+#      text (derived from d) in their message, so d's content can flow into
+#      the returned error value as well.
+#
+# v is an interface{} parameter (arbitrary struct/pointer target), so it is
+# treated field-insensitively -- the whole "v" access path is tainted by data
+# coming from d, and reciprocally v is written into (data comes from d into v).
+# wrapper (arg 2, a string) only controls which XML sub-tree is chosen; its
+# own value does not appear inside v or in the returned error, so no flow is
+# recorded from/to wrapper.
+#
+# No flow is recorded from v to the return value or from wrapper to the
+# return value, since v is a destination being written to (not a source used
+# to build the error), and wrapper's value never appears in outputs.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil"
+    function: "UnmarshalXML"
+    flows:
+      - from: "!arg <d 1>"
+        to: "!arg <v 0>"
+      - from: "!arg <d 1>"
+        to: "!ret 0"

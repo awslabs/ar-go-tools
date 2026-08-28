@@ -1,0 +1,66 @@
+# Analysis of text/tabwriter.(*Writer).Write
+#
+# Source (from `go doc -src text/tabwriter.Writer.Write`):
+#   func (b *Writer) Write(buf []byte) (n int, err error) {
+#       defer b.handlePanic(&err, "Write")
+#       // split text into cells
+#       n = 0
+#       for i, ch := range buf {
+#           ... b.append(buf[n:i]) ...   // appends slices of buf into b.buf (internal cell buffer)
+#           ... b.updateWidth() ...
+#           ... b.terminateCell(...) ...
+#           ... b.addLine(...) ...
+#           ... b.flushNoDefers() ...    // may flush buffered cells to b.output (io.Writer)
+#           ...
+#       }
+#       b.append(buf[n:])               // append leftover text
+#       n = len(buf)
+#       return
+#   }
+#
+# Writer (text/tabwriter.Writer) is a stateful buffering filter. Internal
+# unexported fields (buf, pos, cell, endChar, lines, widths) accumulate the
+# bytes passed to Write across calls, and are only flushed to the
+# underlying io.Writer (field `output`) later (via Flush or an internal
+# flush triggered here). All of these fields are private implementation
+# details of the same buffering mechanism; from the caller's perspective
+# they behave uniformly as "the writer's buffered state", so we model the
+# taint into the receiver as a whole (field-insensitive) rather than
+# picking out individual private fields.
+#
+# Flows identified:
+#  - !arg 0 (buf) -> !receiver: every byte of the input is copied via
+#    b.append(...) into the Writer's internal buffering state (buf/cell/
+#    lines/widths), which is retained across calls and eventually written
+#    out via Flush. This is the primary and most important flow.
+#  - !arg 0 -> !ret 0 (n): n is ultimately set to len(buf), so the returned
+#    count is derived from the input argument (its length). Included per
+#    the rule that any input-derived output value must be reported,
+#    regardless of perceived "sensitivity".
+#
+# Flows excluded:
+#  - !arg 0 -> !ret 1 (err): err is only set from failures encountered
+#    while writing already-buffered/formatted cell data to the underlying
+#    io.Writer (via b.flushNoDefers/format/writeLines), or from a panic
+#    recovered by handlePanic. The occurrence/content of err depends on
+#    the behavior of the underlying io.Writer and internal formatting
+#    logic, not on the content of the newly written bytes; there's no
+#    content-dependent path from buf into err's value.
+#  - No flow from !receiver to !ret: the previously buffered state does
+#    not affect this call's return values beyond len(buf) which is purely
+#    a function of the new argument.
+#  - We do not attempt to model the eventual flow from the receiver's
+#    buffered state into the underlying `output` io.Writer's Write calls
+#    here; that occurs in Flush/flush (a different method) and is out of
+#    scope for this summary of Write itself. Modeling !arg 0 -> !receiver
+#    is sufficient to let a Flush summary carry it further.
+
+dataflow-summaries:
+  - package: "text/tabwriter"
+    receiver: "*Writer"
+    method: "Write"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!ret 0"

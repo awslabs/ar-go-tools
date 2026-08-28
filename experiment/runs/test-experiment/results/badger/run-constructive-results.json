@@ -1,0 +1,2852 @@
+{
+  "badger-cli": [
+    {
+      "Func": "fmt.Append",
+      "SummaryName": "fmt.Append",
+      "Want": {
+        "(!arg 0)[*]": [
+          "(!ret 0)[*]"
+        ],
+        "(!arg 1)[*]": [
+          "(!ret 0)[*]"
+        ]
+      },
+      "Got": {
+        "!arg <b 0>": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77121,
+              "Line": 2455,
+              "Column": 46
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45339,
+              "Line": 1386,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46093,
+              "Line": 1405,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46432,
+              "Line": 1416,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46216,
+              "Line": 1409,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52457,
+              "Line": 1620,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52259,
+              "Line": 1614,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80775,
+              "Line": 2580,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81559,
+              "Line": 2604,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81332,
+              "Line": 2594,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81317,
+              "Line": 2594,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81497,
+              "Line": 2600,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81617,
+              "Line": 2606,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 58131,
+              "Line": 1826,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 61558,
+              "Line": 1930,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41259,
+              "Line": 1242,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41390,
+              "Line": 1248,
+              "Column": 34
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/reflect/protoreflect/value_unsafe.go",
+              "Offset": 2281,
+              "Line": 76,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9784,
+              "Line": 319,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9821,
+              "Line": 320,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 4046,
+              "Line": 116,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 3628,
+              "Line": 105,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41840,
+              "Line": 1263,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18137,
+              "Line": 563,
+              "Column": 62
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22322,
+              "Line": 753,
+              "Column": 36
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/reflect/protoreflect/value_unsafe.go",
+              "Offset": 2455,
+              "Line": 82,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/abi/escape.go",
+              "Offset": 696,
+              "Line": 21,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 38227,
+              "Line": 1312,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 18950,
+              "Line": 702,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20089,
+              "Line": 747,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20136,
+              "Line": 748,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20109,
+              "Line": 747,
+              "Column": 35
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20453,
+              "Line": 759,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 95280,
+              "Line": 3054,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11631,
+              "Line": 392,
+              "Column": 33
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15188,
+              "Line": 551,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15328,
+              "Line": 553,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15474,
+              "Line": 563,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20914,
+              "Line": 769,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21024,
+              "Line": 777,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20884,
+              "Line": 768,
+              "Column": 55
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20860,
+              "Line": 768,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21267,
+              "Line": 790,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21382,
+              "Line": 792,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21522,
+              "Line": 794,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21585,
+              "Line": 796,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21642,
+              "Line": 798,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21705,
+              "Line": 800,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21769,
+              "Line": 802,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21828,
+              "Line": 804,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21904,
+              "Line": 807,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21930,
+              "Line": 808,
+              "Column": 14
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22977,
+              "Line": 857,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22999,
+              "Line": 858,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22502,
+              "Line": 836,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22570,
+              "Line": 839,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22764,
+              "Line": 848,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23053,
+              "Line": 860,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23380,
+              "Line": 872,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23458,
+              "Line": 875,
+              "Column": 14
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23515,
+              "Line": 876,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23761,
+              "Line": 881,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23490,
+              "Line": 875,
+              "Column": 46
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23822,
+              "Line": 883,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23830,
+              "Line": 883,
+              "Column": 38
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23954,
+              "Line": 891,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23979,
+              "Line": 892,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24009,
+              "Line": 892,
+              "Column": 43
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24116,
+              "Line": 897,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24212,
+              "Line": 901,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24320,
+              "Line": 906,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24401,
+              "Line": 910,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24638,
+              "Line": 918,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24648,
+              "Line": 918,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24605,
+              "Line": 917,
+              "Column": 35
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15077,
+              "Line": 545,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 47847,
+              "Line": 1473,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 16241,
+              "Line": 592,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 16254,
+              "Line": 592,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 16286,
+              "Line": 592,
+              "Column": 71
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 75817,
+              "Line": 2416,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 75887,
+              "Line": 2419,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11170,
+              "Line": 372,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11270,
+              "Line": 377,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 57850,
+              "Line": 1818,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 47063,
+              "Line": 1440,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 47336,
+              "Line": 1454,
+              "Column": 47
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9275,
+              "Line": 300,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 44913,
+              "Line": 1369,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45074,
+              "Line": 1376,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77216,
+              "Line": 2457,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 8742,
+              "Line": 280,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 8771,
+              "Line": 281,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 39784,
+              "Line": 1201,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 39960,
+              "Line": 1208,
+              "Column": 51
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45286,
+              "Line": 1384,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45345,
+              "Line": 1386,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45787,
+              "Line": 1398,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45879,
+              "Line": 1399,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46222,
+              "Line": 1409,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46260,
+              "Line": 1411,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46337,
+              "Line": 1412,
+              "Column": 41
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46693,
+              "Line": 1424,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46535,
+              "Line": 1420,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46580,
+              "Line": 1421,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52076,
+              "Line": 1606,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52523,
+              "Line": 1622,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80424,
+              "Line": 2571,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80465,
+              "Line": 2574,
+              "Column": 12
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80851,
+              "Line": 2584,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80637,
+              "Line": 2577,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81286,
+              "Line": 2593,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81361,
+              "Line": 2596,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81689,
+              "Line": 2608,
+              "Column": 57
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 78595,
+              "Line": 2516,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 78930,
+              "Line": 2532,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 58087,
+              "Line": 1825,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 58167,
+              "Line": 1828,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10374,
+              "Line": 342,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10390,
+              "Line": 343,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10448,
+              "Line": 344,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10427,
+              "Line": 343,
+              "Column": 50
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 1843,
+              "Line": 50,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2086,
+              "Line": 56,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2148,
+              "Line": 58,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2213,
+              "Line": 60,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2227,
+              "Line": 60,
+              "Column": 58
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2165,
+              "Line": 59,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 61514,
+              "Line": 1929,
+              "Column": 10
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 61564,
+              "Line": 1930,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40202,
+              "Line": 1216,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40281,
+              "Line": 1219,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40252,
+              "Line": 1219,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40327,
+              "Line": 1221,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41567,
+              "Line": 1254,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40415,
+              "Line": 1227,
+              "Column": 12
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41126,
+              "Line": 1238,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41396,
+              "Line": 1248,
+              "Column": 40
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18535,
+              "Line": 579,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9331,
+              "Line": 304,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9359,
+              "Line": 306,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9554,
+              "Line": 312,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9879,
+              "Line": 322,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9655,
+              "Line": 315,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9790,
+              "Line": 319,
+              "Column": 45
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 3882,
+              "Line": 112,
+              "Column": 10
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 3919,
+              "Line": 112,
+              "Column": 47
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41733,
+              "Line": 1260,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41797,
+              "Line": 1261,
+              "Column": 50
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41846,
+              "Line": 1263,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 42560,
+              "Line": 1285,
+              "Column": 12
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 11021,
+              "Line": 395,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 11048,
+              "Line": 396,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18122,
+              "Line": 563,
+              "Column": 47
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22149,
+              "Line": 746,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22140,
+              "Line": 746,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22135,
+              "Line": 746,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22210,
+              "Line": 750,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22280,
+              "Line": 751,
+              "Column": 56
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22343,
+              "Line": 754,
+              "Column": 17
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3583,
+              "Line": 121,
+              "Column": 23
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3609,
+              "Line": 122,
+              "Column": 23
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3627,
+              "Line": 122,
+              "Column": 41
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3909,
+              "Line": 137,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3948,
+              "Line": 138,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3993,
+              "Line": 139,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4104,
+              "Line": 143,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4151,
+              "Line": 144,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4283,
+              "Line": 150,
+              "Column": 47
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4375,
+              "Line": 153,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4418,
+              "Line": 154,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4511,
+              "Line": 157,
+              "Column": 47
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8765,
+              "Line": 276,
+              "Column": 26
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8786,
+              "Line": 276,
+              "Column": 47
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4649,
+              "Line": 162,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4692,
+              "Line": 163,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4745,
+              "Line": 164,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4784,
+              "Line": 165,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4837,
+              "Line": 166,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4884,
+              "Line": 167,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4937,
+              "Line": 168,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4990,
+              "Line": 169,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5037,
+              "Line": 170,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5080,
+              "Line": 171,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5123,
+              "Line": 172,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5164,
+              "Line": 173,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5207,
+              "Line": 174,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5254,
+              "Line": 175,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5305,
+              "Line": 176,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5350,
+              "Line": 177,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5411,
+              "Line": 178,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5476,
+              "Line": 179,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5521,
+              "Line": 180,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 6997,
+              "Line": 227,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7036,
+              "Line": 228,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7081,
+              "Line": 229,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7126,
+              "Line": 230,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7173,
+              "Line": 231,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7214,
+              "Line": 232,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7265,
+              "Line": 233,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7395,
+              "Line": 238,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7446,
+              "Line": 239,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7489,
+              "Line": 240,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7532,
+              "Line": 241,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7589,
+              "Line": 242,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7648,
+              "Line": 243,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7709,
+              "Line": 244,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7770,
+              "Line": 245,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7817,
+              "Line": 246,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7858,
+              "Line": 247,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7989,
+              "Line": 252,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8032,
+              "Line": 253,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8089,
+              "Line": 254,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8148,
+              "Line": 255,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8280,
+              "Line": 260,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8406,
+              "Line": 265,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8533,
+              "Line": 270,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8574,
+              "Line": 271,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8617,
+              "Line": 272,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8682,
+              "Line": 273,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 12807,
+              "Line": 459,
+              "Column": 10
+            }
+          ]
+        },
+        "DataflowFeatures": {
+          "RecoverUsages": [
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15990,
+              "Line": 588,
+              "Column": 19
+            }
+          ],
+          "TimedOut": true
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 70248302534
+    },
+    {
+      "Func": "fmt.Sprintln",
+      "SummaryName": "fmt.Sprintln",
+      "Want": {
+        "(!arg 0)[*]": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41259,
+              "Line": 1242,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41390,
+              "Line": 1248,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77121,
+              "Line": 2455,
+              "Column": 46
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45339,
+              "Line": 1386,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46093,
+              "Line": 1405,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46432,
+              "Line": 1416,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46216,
+              "Line": 1409,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 58131,
+              "Line": 1826,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80775,
+              "Line": 2580,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81559,
+              "Line": 2604,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81332,
+              "Line": 2594,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81317,
+              "Line": 2594,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81497,
+              "Line": 2600,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81617,
+              "Line": 2606,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52457,
+              "Line": 1620,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52259,
+              "Line": 1614,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 61558,
+              "Line": 1930,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41840,
+              "Line": 1263,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 4046,
+              "Line": 116,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 3628,
+              "Line": 105,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9784,
+              "Line": 319,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9821,
+              "Line": 320,
+              "Column": 22
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/reflect/protoreflect/value_unsafe.go",
+              "Offset": 2281,
+              "Line": 76,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22322,
+              "Line": 753,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18137,
+              "Line": 563,
+              "Column": 62
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/abi/escape.go",
+              "Offset": 696,
+              "Line": 21,
+              "Column": 23
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/reflect/protoreflect/value_unsafe.go",
+              "Offset": 2455,
+              "Line": 82,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 32234,
+              "Line": 1131,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 32328,
+              "Line": 1133,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 32363,
+              "Line": 1135,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 6797,
+              "Line": 265,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 8164,
+              "Line": 309,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 9666,
+              "Line": 351,
+              "Column": 33
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 18950,
+              "Line": 702,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20089,
+              "Line": 747,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20136,
+              "Line": 748,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20109,
+              "Line": 747,
+              "Column": 35
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20453,
+              "Line": 759,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20914,
+              "Line": 769,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21024,
+              "Line": 777,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20884,
+              "Line": 768,
+              "Column": 55
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20860,
+              "Line": 768,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21267,
+              "Line": 790,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21382,
+              "Line": 792,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21522,
+              "Line": 794,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21585,
+              "Line": 796,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21642,
+              "Line": 798,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21705,
+              "Line": 800,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21769,
+              "Line": 802,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21828,
+              "Line": 804,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21904,
+              "Line": 807,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 21930,
+              "Line": 808,
+              "Column": 14
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22977,
+              "Line": 857,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22999,
+              "Line": 858,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22502,
+              "Line": 836,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22570,
+              "Line": 839,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 22764,
+              "Line": 848,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23053,
+              "Line": 860,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23380,
+              "Line": 872,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23458,
+              "Line": 875,
+              "Column": 14
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23515,
+              "Line": 876,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23761,
+              "Line": 881,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23490,
+              "Line": 875,
+              "Column": 46
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23822,
+              "Line": 883,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23830,
+              "Line": 883,
+              "Column": 38
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23954,
+              "Line": 891,
+              "Column": 28
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 23979,
+              "Line": 892,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24009,
+              "Line": 892,
+              "Column": 43
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24116,
+              "Line": 897,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24212,
+              "Line": 901,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24320,
+              "Line": 906,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24401,
+              "Line": 910,
+              "Column": 25
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24638,
+              "Line": 918,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24648,
+              "Line": 918,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 24605,
+              "Line": 917,
+              "Column": 35
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 95280,
+              "Line": 3054,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15077,
+              "Line": 545,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 47847,
+              "Line": 1473,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 38227,
+              "Line": 1312,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15188,
+              "Line": 551,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15328,
+              "Line": 553,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15474,
+              "Line": 563,
+              "Column": 32
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11631,
+              "Line": 392,
+              "Column": 33
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11170,
+              "Line": 372,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11270,
+              "Line": 377,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 78595,
+              "Line": 2516,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 78930,
+              "Line": 2532,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40202,
+              "Line": 1216,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40281,
+              "Line": 1219,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40252,
+              "Line": 1219,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40327,
+              "Line": 1221,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41567,
+              "Line": 1254,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 40415,
+              "Line": 1227,
+              "Column": 12
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41126,
+              "Line": 1238,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41396,
+              "Line": 1248,
+              "Column": 40
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10374,
+              "Line": 342,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10390,
+              "Line": 343,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10448,
+              "Line": 344,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 10427,
+              "Line": 343,
+              "Column": 50
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 77216,
+              "Line": 2457,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45286,
+              "Line": 1384,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45345,
+              "Line": 1386,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45787,
+              "Line": 1398,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45879,
+              "Line": 1399,
+              "Column": 48
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46222,
+              "Line": 1409,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46260,
+              "Line": 1411,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46337,
+              "Line": 1412,
+              "Column": 41
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46693,
+              "Line": 1424,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46535,
+              "Line": 1420,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 46580,
+              "Line": 1421,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 57850,
+              "Line": 1818,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 47063,
+              "Line": 1440,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 47336,
+              "Line": 1454,
+              "Column": 47
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 58087,
+              "Line": 1825,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 58167,
+              "Line": 1828,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80424,
+              "Line": 2571,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80465,
+              "Line": 2574,
+              "Column": 12
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80851,
+              "Line": 2584,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 80637,
+              "Line": 2577,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81286,
+              "Line": 2593,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81361,
+              "Line": 2596,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 81689,
+              "Line": 2608,
+              "Column": 57
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52076,
+              "Line": 1606,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 52523,
+              "Line": 1622,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 75817,
+              "Line": 2416,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 75887,
+              "Line": 2419,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 1843,
+              "Line": 50,
+              "Column": 18
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2086,
+              "Line": 56,
+              "Column": 19
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2148,
+              "Line": 58,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2213,
+              "Line": 60,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2227,
+              "Line": 60,
+              "Column": 58
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/fmtsort/sort.go",
+              "Offset": 2165,
+              "Line": 59,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 61514,
+              "Line": 1929,
+              "Column": 10
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 61564,
+              "Line": 1930,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9275,
+              "Line": 300,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 39784,
+              "Line": 1201,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 39960,
+              "Line": 1208,
+              "Column": 51
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 44913,
+              "Line": 1369,
+              "Column": 13
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 45074,
+              "Line": 1376,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 8742,
+              "Line": 280,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 8771,
+              "Line": 281,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 16241,
+              "Line": 592,
+              "Column": 26
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 16254,
+              "Line": 592,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 16286,
+              "Line": 592,
+              "Column": 71
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18535,
+              "Line": 579,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41733,
+              "Line": 1260,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41797,
+              "Line": 1261,
+              "Column": 50
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 41846,
+              "Line": 1263,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 42560,
+              "Line": 1285,
+              "Column": 12
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 3882,
+              "Line": 112,
+              "Column": 10
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 3919,
+              "Line": 112,
+              "Column": 47
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 11021,
+              "Line": 395,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 11048,
+              "Line": 396,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9331,
+              "Line": 304,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9359,
+              "Line": 306,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9554,
+              "Line": 312,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9879,
+              "Line": 322,
+              "Column": 49
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9655,
+              "Line": 315,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/value.go",
+              "Offset": 9790,
+              "Line": 319,
+              "Column": 45
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22210,
+              "Line": 750,
+              "Column": 11
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22280,
+              "Line": 751,
+              "Column": 56
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22343,
+              "Line": 754,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22149,
+              "Line": 746,
+              "Column": 29
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22140,
+              "Line": 746,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 22135,
+              "Line": 746,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18122,
+              "Line": 563,
+              "Column": 47
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 12807,
+              "Line": 459,
+              "Column": 10
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3583,
+              "Line": 121,
+              "Column": 23
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3609,
+              "Line": 122,
+              "Column": 23
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3627,
+              "Line": 122,
+              "Column": 41
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3909,
+              "Line": 137,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3948,
+              "Line": 138,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 3993,
+              "Line": 139,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4104,
+              "Line": 143,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4151,
+              "Line": 144,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4283,
+              "Line": 150,
+              "Column": 47
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4375,
+              "Line": 153,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4418,
+              "Line": 154,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4511,
+              "Line": 157,
+              "Column": 47
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8765,
+              "Line": 276,
+              "Column": 26
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8786,
+              "Line": 276,
+              "Column": 47
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4649,
+              "Line": 162,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4692,
+              "Line": 163,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4745,
+              "Line": 164,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4784,
+              "Line": 165,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4837,
+              "Line": 166,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4884,
+              "Line": 167,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4937,
+              "Line": 168,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 4990,
+              "Line": 169,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5037,
+              "Line": 170,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5080,
+              "Line": 171,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5123,
+              "Line": 172,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5164,
+              "Line": 173,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5207,
+              "Line": 174,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5254,
+              "Line": 175,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5305,
+              "Line": 176,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5350,
+              "Line": 177,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5411,
+              "Line": 178,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5476,
+              "Line": 179,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 5521,
+              "Line": 180,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 6997,
+              "Line": 227,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7036,
+              "Line": 228,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7081,
+              "Line": 229,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7126,
+              "Line": 230,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7173,
+              "Line": 231,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7214,
+              "Line": 232,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7265,
+              "Line": 233,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7395,
+              "Line": 238,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7446,
+              "Line": 239,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7489,
+              "Line": 240,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7532,
+              "Line": 241,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7589,
+              "Line": 242,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7648,
+              "Line": 243,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7709,
+              "Line": 244,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7770,
+              "Line": 245,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7817,
+              "Line": 246,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7858,
+              "Line": 247,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 7989,
+              "Line": 252,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8032,
+              "Line": 253,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8089,
+              "Line": 254,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8148,
+              "Line": 255,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8280,
+              "Line": 260,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8406,
+              "Line": 265,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8533,
+              "Line": 270,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8574,
+              "Line": 271,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8617,
+              "Line": 272,
+              "Column": 21
+            },
+            {
+              "Filename": "/go/pkg/mod/google.golang.org/protobuf@v1.36.7/internal/descfmt/stringer.go",
+              "Offset": 8682,
+              "Line": 273,
+              "Column": 21
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 31793,
+              "Line": 1116,
+              "Column": 17
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 32210,
+              "Line": 1130,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 6808,
+              "Line": 265,
+              "Column": 43
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 6866,
+              "Line": 267,
+              "Column": 38
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 6844,
+              "Line": 267,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 8175,
+              "Line": 309,
+              "Column": 43
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 8234,
+              "Line": 311,
+              "Column": 38
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 8212,
+              "Line": 311,
+              "Column": 16
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 9505,
+              "Line": 347,
+              "Column": 20
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 9677,
+              "Line": 351,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 9715,
+              "Line": 352,
+              "Column": 34
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 9733,
+              "Line": 353,
+              "Column": 15
+            },
+            {
+              "Filename": "/usr/local/go/src/reflect/map_swiss.go",
+              "Offset": 9865,
+              "Line": 358,
+              "Column": 14
+            }
+          ]
+        },
+        "DataflowFeatures": {
+          "RecoverUsages": [
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 15990,
+              "Line": 588,
+              "Column": 19
+            }
+          ],
+          "TimedOut": true
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 78649997081
+    }
+  ]
+}

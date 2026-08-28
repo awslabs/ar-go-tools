@@ -1,0 +1,60 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!receiver'
+    to: '!ret 0'
+  method: Funcs
+  package: text/template
+  receiver: Template
+- flows:
+  - from: '!receiver'
+    to: '!arg 0'
+  - from: '!receiver'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!arg 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  method: Execute
+  package: text/template
+  receiver: '*Template'
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  - from: '!arg 0'
+    to: '!ret 0'
+  method: Write
+  package: text/tabwriter
+  receiver: '*Writer'
+- flows:
+  - from: '!receiver'
+    to: (!receiver).output
+  method: Flush
+  package: text/tabwriter
+  receiver: Writer
+- flows:
+  - from: '!arg 0'
+    to: (!receiver).text
+  - from: '!arg 0'
+    to: (!receiver).Root
+  - from: '!receiver'
+    to: '!ret 0'
+  - from: '!arg 0'
+    to: '!arg <treeSet 3>'
+  - from: '!receiver'
+    to: '!arg <treeSet 3>'
+  - from: '!arg 0'
+    to: '!ret 1'
+  - from: '!receiver'
+    to: '!ret 1'
+  method: Parse
+  package: text/template/parse
+  receiver: '*Tree'
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  function: Append
+  package: fmt

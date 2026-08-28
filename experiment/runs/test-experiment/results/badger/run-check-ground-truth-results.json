@@ -1,0 +1,137 @@
+{
+  "badger-cli:functions": [
+    {
+      "Func": "fmt.Append",
+      "SummaryName": "fmt.Append",
+      "Want": {
+        "(!arg 0)[*]": [
+          "(!ret 0)[*]"
+        ],
+        "(!arg 1)[*]": [
+          "(!ret 0)[*]"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 2
+      },
+      "Elapsed": 54862
+    },
+    {
+      "Func": "fmt.Sprintln",
+      "SummaryName": "fmt.Sprintln",
+      "Want": {
+        "(!arg 0)[*]": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 25063
+    }
+  ]
+}

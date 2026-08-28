@@ -1,0 +1,35 @@
+# crypto/x509.ParseECPrivateKey(der []byte) (*ecdsa.PrivateKey, error)
+#
+# ParseECPrivateKey is a thin wrapper that calls the unexported
+# parseECPrivateKey(nil, der). Analysis of parseECPrivateKey:
+#
+#   - der is unmarshalled via asn1.Unmarshal into an ecPrivateKey struct
+#     (fields: Version, PrivateKey []byte, NamedCurveOID, PublicKey). All of
+#     these values are derived from der.
+#   - privKey.PrivateKey (der-derived) is turned into a big.Int (k), assigned
+#     to priv.D, and also copied into a padded byte slice which is fed to
+#     curve.ScalarBaseMult to compute priv.X and priv.Y. So the returned
+#     *ecdsa.PrivateKey (ret 0) is fully derived from der (via D, X, Y, and
+#     also Curve which depends on the NamedCurveOID field of der, though the
+#     curve value itself is one of a small fixed set of named curves - still,
+#     conservatively the whole struct depends on der contents through the
+#     private scalar/point at least).
+#   - On error paths, der also affects the returned error (ret 1): e.g.
+#     asn1 unmarshal error text (err.Error()) is embedded in the returned
+#     error, and fmt.Errorf("x509: unknown EC private key version %d",
+#     privKey.Version) embeds a value taken directly out of der. So der
+#     flows into ret 1 as well.
+#   - Since *ecdsa.PrivateKey is a pointer to a struct with named fields but
+#     every field of the returned key is influenced by der in the same
+#     fashion (there's no field of der that flows to one output field but
+#     not others in a way that matters for soundness/precision tradeoff), a
+#     field-insensitive flow from !arg 0 to !ret 0 is used.
+
+dataflow-summaries:
+  - package: "crypto/x509"
+    function: "ParseECPrivateKey"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"

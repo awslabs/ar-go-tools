@@ -1,0 +1,336 @@
+{
+  "rq": "checker-ablation",
+  "repo": "sample",
+  "targets": [
+    {
+      "summary_name": "(*crypto/ecdsa.PrivateKey).Sign",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/ecdsa.PrivateKey).Sign",
+          "checker_method": "read"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+          "checker_method": "read"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*crypto/internal/fips140/nistec/fiat.P521Element).Square",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*crypto/internal/fips140/nistec/fiat.P521Element).Square",
+          "checker_method": "read"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*encoding/base64.Encoding).EncodeToString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*encoding/base64.Encoding).EncodeToString",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/cipher.NewGCM",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/cipher.NewGCM",
+          "checker_method": "general"
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.GenerateKey",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.GenerateKey",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "crypto/elliptic.MarshalCompressed",
+      "kind": "function",
+      "results": [
+        {
+          "name": "crypto/elliptic.MarshalCompressed",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "encoding/hex.DecodeString",
+      "kind": "function",
+      "results": [
+        {
+          "name": "encoding/hex.DecodeString",
+          "checker_method": "general"
+        }
+      ]
+    },
+    {
+      "summary_name": "github.com/aws/aws-sdk-go/aws.String",
+      "kind": "function",
+      "results": [
+        {
+          "name": "github.com/aws/aws-sdk-go/aws.String",
+          "checker_method": "general"
+        }
+      ]
+    },
+    {
+      "summary_name": "io/ioutil.ReadFile",
+      "kind": "function",
+      "results": [
+        {
+          "name": "io/ioutil.ReadFile",
+          "checker_method": "recursive"
+        }
+      ]
+    },
+    {
+      "summary_name": "(fmt.Stringer).String",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(*net/http.http2PushPromiseFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetCallerIdentityOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2ContinuationFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.RecordsEvent).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2GoAwayFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountsOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.S3ObjectLambdaAccessPointARN).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountRolesOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2MetaHeadersFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.PutObjectOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/service/s3.outpostAccessPointEndpointBuilder).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2UnknownFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.ContinuationEvent).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.ProgressEvent).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*reflect.rtype).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*bytes.Buffer).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2PingFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2WindowUpdateFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.IPAddr).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/url.Userinfo).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.AccessPointARN).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.ResourceNotFoundException).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.UDPAddr).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2RSTStreamFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*flag.stringValue).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.OutpostAccessPointARN).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/awserr.baseError).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.DecodeAuthorizationMessageOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2DataFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.socksAddr).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.UnauthorizedException).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.pattern).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*math/big.Int).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2SettingsFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.StatsEvent).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/internal/s3shared/s3err.RequestFailure).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/url.URL).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.TooManyRequestsException).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.LogoutOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.GetRoleCredentialsOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetSessionTokenOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.UnixAddr).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithSAMLOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2writeData).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetAccessKeyInfoOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.TCPAddr).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/awserr.requestError).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.GetFederationTokenOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*os.ProcessState).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/s3.EndEvent).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*strings.Builder).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithWebIdentityOutput).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2HeadersFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2PriorityFrame).String",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*github.com/aws/aws-sdk-go/service/sso.InvalidRequestException).String",
+          "checker_method": "general"
+        }
+      ]
+    }
+  ]
+}

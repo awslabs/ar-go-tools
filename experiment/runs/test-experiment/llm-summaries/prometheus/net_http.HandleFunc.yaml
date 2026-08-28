@@ -1,0 +1,33 @@
+# Analysis of net/http.HandleFunc
+#
+# Signature: func HandleFunc(pattern string, handler func(ResponseWriter, *Request))
+#
+# Source (from go doc -src):
+#   func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
+#       if use121 {
+#           DefaultServeMux.mux121.handleFunc(pattern, handler)
+#       } else {
+#           DefaultServeMux.register(pattern, HandlerFunc(handler))
+#       }
+#   }
+#
+# HandleFunc has no return values and no receiver. Its only effect is to store
+# `pattern` and `handler` into the package-level global `DefaultServeMux`
+# (a *ServeMux). Per the task instructions, flows into global variables are
+# not represented in the summary format, and there is no return value, receiver,
+# or by-reference argument that could carry data back out of this call to the
+# caller's visible state.
+#
+# The registered handler will later be invoked by the ServeMux when a request
+# matching `pattern` arrives, passing a ResponseWriter and *Request to it. That
+# is a call-graph/control-flow relationship discovered separately by the
+# analysis (via the stored handler closure), not a data flow expressible through
+# this function's arguments/return values, so it is not encoded here either.
+#
+# Conclusion: no argument reaches any return value, receiver, or other argument
+# of this call in an observable way. The correct summary has no flows.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "HandleFunc"
+    flows: []

@@ -1,0 +1,159 @@
+{
+  "dataflows": [
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:302:54",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:302:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:49:32",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:49:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:49:32",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:59:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:59:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:56:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/backup.go:54:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:56:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:302:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/read_bench.go:103:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:51:13",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:367:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:349:32",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:367:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:59:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:56:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/backup.go:54:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:56:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:302:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/read_bench.go:103:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/root.go:47:5",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/bank.go:367:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:59:47",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/restore.go:59:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/write_bench.go:359:26",
+      "sink": "/usr/local/go/src/path/filepath/path.go:362:19"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/write_bench.go:359:26",
+      "sink": "/usr/local/go/src/path/filepath/path.go:438:19"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/rotate.go:41:34",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/rotate.go:46:35"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/rotate.go:41:34",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/key_registry.go:280:43"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/rotate.go:41:34",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/key_registry.go:261:26"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/rotate.go:41:34",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/dir_unix.go:91:61"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/backup.go:45:31",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/backup.go:54:24"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/info.go:92:32",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/info.go:330:34"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/info.go:112:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/info.go:330:34"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:52:31",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:56:31"
+    },
+    {
+      "tag": "path-traversal-vuln-#1",
+      "source": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:52:31",
+      "sink": "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/pick_table_bench.go:56:31"
+    }
+  ],
+  "count_by_severity": {
+    "": 30
+  },
+  "report_path": "/usr/src/app/payload/public-repos-checks/badger/logs/argot/overall-report-3132069521.json",
+  "duration_seconds": 792.89
+}

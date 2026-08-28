@@ -1,0 +1,35 @@
+# UnmarshalMeta(r *request.Request) reads r.HTTPResponse and populates fields
+# of r (RequestID, Data, Error). Specifically:
+#
+#  - r.RequestID = r.HTTPResponse.Header.Get("X-Amzn-Requestid") (or the
+#    "X-Amz-Request-Id" alternative). So HTTPResponse -> RequestID.
+#
+#  - If r.DataFilled() (r.Data != nil), it calls
+#    UnmarshalResponse(r.HTTPResponse, r.Data, ...), which calls
+#    unmarshalLocationElements: this walks the exported fields of the struct
+#    pointed to by r.Data and, based on struct tags ("statusCode", "header",
+#    "headers"), fills them from resp.StatusCode / resp.Header. So
+#    HTTPResponse -> Data (whole field, since Data is an interface{} value
+#    and is written to via reflection on its underlying concrete struct --
+#    interface-typed positions are treated field-insensitively).
+#
+#  - unmarshalLocationElements can return an error (wrapping header-decoding
+#    errors) which is assigned to r.Error. So HTTPResponse -> Error as well
+#    (the error's content depends on which header failed to decode, i.e. on
+#    the response headers).
+#
+# r.Config.LowerCaseHeaderMaps only affects case-handling of header map keys,
+# not a data flow of tainted content, so it's excluded.
+#
+# UnmarshalMeta returns nothing, so there are no return-value flows.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/private/protocol/rest"
+    function: "UnmarshalMeta"
+    flows:
+      - from: "(!arg 0).HTTPResponse"
+        to: "(!arg 0).RequestID"
+      - from: "(!arg 0).HTTPResponse"
+        to: "(!arg 0).Data"
+      - from: "(!arg 0).HTTPResponse"
+        to: "(!arg 0).Error"

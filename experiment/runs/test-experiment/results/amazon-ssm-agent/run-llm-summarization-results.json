@@ -1,0 +1,6 @@
+{
+  "repo": "amazon-ssm-agent",
+  "duration_seconds": 376.24,
+  "summaries_path": "/usr/src/app/experiment/runs/test-experiment/llm-summaries/amazon-ssm-agent/summaries.yaml",
+  "missing": []
+}

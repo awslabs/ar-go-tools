@@ -1,0 +1,76 @@
+{
+  "rq": "checker-efficiency",
+  "repo": "prometheus",
+  "targets": [
+    {
+      "summary_name": "(*net/http.conn).serve",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*net/http.conn).serve",
+          "checker_seconds": 0.00007613
+        }
+      ]
+    },
+    {
+      "summary_name": "(*net/http.http2serverConn).serve",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*net/http.http2serverConn).serve",
+          "checker_seconds": 0.075205669
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.Handle",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.Handle",
+          "checker_seconds": 0.000018913
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.HandleFunc",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.HandleFunc",
+          "checker_seconds": 0.000014702
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.ListenAndServe",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.ListenAndServe",
+          "checker_seconds": 0.000476968
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.NotFound",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.NotFound",
+          "checker_seconds": 0.000023589
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.StatusText",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.StatusText",
+          "checker_seconds": 0.000025829
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: (!ret 0)[*]
+  - from: '!arg 0'
+    to: '!ret 1'
+  function: DecodeString
+  package: encoding/hex

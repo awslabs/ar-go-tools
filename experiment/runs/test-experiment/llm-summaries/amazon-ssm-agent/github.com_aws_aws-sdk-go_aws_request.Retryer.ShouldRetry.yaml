@@ -1,0 +1,48 @@
+# Interface method summary for request.Retryer.ShouldRetry(*Request) bool.
+#
+# Note: the argot tooling in this session could not load the target program
+# configuration (a persistent infrastructure error creating the reports
+# directory), so this summary is based on inspecting the interface
+# declaration (go/doc) and the SDK's default implementation,
+# client.DefaultRetryer.ShouldRetry, which is the canonical implementation
+# used throughout the aws-sdk-go codebase and is representative of how any
+# Retryer.ShouldRetry implementation is expected to behave per the
+# interface's documented contract.
+#
+# DefaultRetryer.ShouldRetry:
+#   func (d DefaultRetryer) ShouldRetry(r *request.Request) bool {
+#       if d.NumMaxRetries == 0 { return false }
+#       if r.Retryable != nil { return *r.Retryable }
+#       return r.IsErrorRetryable() || r.IsErrorThrottle()
+#   }
+#
+# The returned bool is computed directly from fields/state of the *Request
+# argument: r.Retryable (a *bool possibly set by earlier handlers) and the
+# error/response state inspected by r.IsErrorRetryable()/r.IsErrorThrottle()
+# (which look at r.Error and r.HTTPResponse). This means the argument
+# concretely determines the returned bool, so there is a data flow from
+# !arg 0 to !ret 0.
+#
+# Since this is an interface method summary, it must be field-insensitive
+# (interfaces/annotations for interface methods do not support field
+# access paths): we use "!arg 0" directly rather than a field path like
+# "(!arg 0).Retryable", even though the concrete implementation reads a
+# specific field.
+#
+# The receiver (d.NumMaxRetries in DefaultRetryer) only gates whether the
+# function short-circuits to false; it doesn't cause data to flow from
+# receiver state into the returned bool in a way that depends on tainted
+# receiver data (NumMaxRetries is just a retry-count configuration value,
+# not something we treat as a taint source here), so no !receiver -> !ret
+# flow is included, consistent with the sibling RetryRules summary.
+#
+# ShouldRetry only reads from the Request; it does not mutate it, so there
+# is no flow back into !arg 0.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    interface: "Retryer"
+    method: "ShouldRetry"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

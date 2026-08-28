@@ -1,0 +1,51 @@
+# Analysis of github.com/aws/aws-sdk-go/aws/request.(*Request).Send
+#
+# Send() takes no arguments besides the receiver (*Request) and returns a
+# single error value. Its body is essentially a loop that:
+#   1. Calls r.Sign() (which calls r.Build() then runs r.Handlers.Sign)
+#   2. Calls r.sendRequest() (which runs r.Handlers.Send,
+#      r.Handlers.UnmarshalMeta, r.Handlers.ValidateResponse,
+#      r.Handlers.Unmarshal, r.Handlers.UnmarshalError as applicable)
+#   3. On failure, runs r.Handlers.Retry / r.Handlers.AfterRetry and
+#      r.prepareRetry(), which rebuilds r.HTTPRequest from itself, resets
+#      the body, and closes/replaces the HTTP response.
+#   4. Always (via defer) ensures r.HTTPResponse is non-nil and runs
+#      r.Handlers.Complete.
+#
+# Every one of these steps operates through HandlerList.Run(r), which calls
+# arbitrary, dynamically-registered handler functions of type func(*Request)
+# on the receiver. Such handlers read/write essentially any field of the
+# Request (Params, Body/streamingBody, HTTPRequest, HTTPResponse, Data,
+# Error, RequestID, Retryable, RetryCount, RetryDelay, SignedHeaderVals,
+# etc.) as part of building the HTTP request from the input parameters,
+# sending it, and unmarshaling the response back into the Request's fields
+# (e.g. Data, RequestID, Error). Because the concrete handler functions are
+# not statically visible from Send/sendRequest/Sign/prepareRetry alone (they
+# are registered elsewhere in the SDK/client code), we soundly model the
+# receiver as a single blob that can flow into itself: any field of the
+# receiver may affect any other field of the receiver as a result of running
+# these handler chains (e.g. Params -> HTTPRequest -> HTTPResponse -> Data /
+# Error / RequestID).
+#
+# The only return value is `error`, which ultimately derives from r.Error
+# (set either directly, or via handler chains operating on the receiver's
+# other fields, e.g. validation/unmarshal errors derived from HTTPResponse
+# which itself derives from Params/Body/HTTPRequest). Since this is fully
+# captured by the receiver-to-receiver flow already, we add an explicit
+# receiver -> !ret 0 edge to make the flow to the return value directly
+# visible in the summary (Error is an interface-typed field, so we do not
+# use it as a nested access path beyond the field itself, and here we use
+# the whole-receiver flow instead since many other fields can also
+# transitively determine the returned error through handler execution).
+#
+# No other flows exist since Send takes no other arguments.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    receiver: "*Request"
+    method: "Send"
+    flows:
+      - from: "!receiver"
+        to: "!receiver"
+      - from: "!receiver"
+        to: "!ret 0"

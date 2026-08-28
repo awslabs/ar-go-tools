@@ -1,0 +1,27 @@
+# net/http.SetCookie(w ResponseWriter, cookie *Cookie)
+#
+# Behavior: it calls cookie.String() to serialize the *Cookie (all its fields
+# such as Name, Value, Path, Domain, Expires, etc. are combined into a single
+# string via Cookie.String()), and if the result is non-empty, adds it as a
+# "Set-Cookie" header value to w.Header() (via Header().Add).
+#
+# Data flow:
+#   - The contents of `cookie` (arg 1) determine the header value added to
+#     `w` (arg 0). Since ResponseWriter is an interface, and the mutation
+#     happens through its Header() map (itself accessed via an interface
+#     method call), we cannot express field sensitivity on the interface
+#     value w. So we record a field-insensitive flow from !arg 1 to !arg 0.
+#   - Cookie is a concrete pointer type, but since the destination (w) is an
+#     interface, per the interface field-insensitivity rule, we don't
+#     attempt to enumerate specific Cookie fields separately -- they all
+#     merge into the same output (the header string) via cookie.String().
+#   - No return value (function returns nothing).
+#   - w itself is not read from in a way that flows back to cookie; only
+#     the mutation of w's headers happens, based on cookie's content.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "SetCookie"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"

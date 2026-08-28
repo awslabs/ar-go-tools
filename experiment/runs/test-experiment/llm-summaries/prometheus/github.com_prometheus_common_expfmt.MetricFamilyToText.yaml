@@ -1,0 +1,57 @@
+# Analysis of github.com/prometheus/common/expfmt.MetricFamilyToText
+#
+# NOTE ON METHODOLOGY: The Argot toolchain could not be used for this function.
+# Repeated attempts to load the configured target ("middleware") via
+# argot_reload_config/argot_load failed with an infrastructure error
+# ("could not create directory .../logs/argot"), and `go doc`/`go_doc` could not
+# resolve the third-party module github.com/prometheus/common/expfmt in this
+# environment (only stdlib packages resolved). This summary is therefore based
+# on careful recollection/analysis of the well-known, stable implementation of
+# this function in the prometheus/common repository (expfmt/text_create.go).
+#
+# Function signature (from the known source):
+#   func MetricFamilyToText(out io.Writer, in *dto.MetricFamily) (written int, err error)
+#
+# Behavior:
+#  - The function serializes the contents of `in` (a *dto.MetricFamily protobuf
+#    message: Name, Help, Type, and the list of Metric samples with their
+#    labels/values) into the Prometheus text exposition format, and writes the
+#    resulting text directly to `out` via out.Write / out.WriteString calls.
+#    This is a genuine data flow: the textual content written to `out` is
+#    entirely derived from the fields of `in`. Since `out` is an io.Writer
+#    (interface) argument used purely as a sink here, and array/slice/struct
+#    field-level tracking inside an opaque interface isn't meaningful, we model
+#    this as a field-insensitive flow from !arg 1 (in) to !arg 0 (out).
+#  - `written` (the first return value) is the total byte count of everything
+#    written to `out`, which is a direct function of the length/content of the
+#    serialized fields of `in` (name length, help text length, number and
+#    content of samples, etc.). So there is a genuine data dependency from
+#    !arg 1 to !ret 0.
+#  - `err` (the second return value): several error paths embed information
+#    derived from `in` directly, e.g.:
+#      fmt.Errorf("MetricFamily has no metrics: %s", in)
+#      fmt.Errorf("MetricFamily has no name: %s", in)
+#      fmt.Errorf("unexpected type in metric %s %s", name, metric)
+#    where `name` and `metric` come from `in`. Hence !arg 1 flows to !ret 1.
+#    (Errors can also originate purely from the underlying io.Writer failing to
+#    write, but that is a control-flow/failure propagation from `out`, not a
+#    data-content flow "from" `out`'s own data into `err`; no such flow is
+#    modeled here.)
+#  - All fields of `in` (Name, Help, Type, Metric) end up contributing to the
+#    same three destinations (out, ret0, ret1) in essentially the same way (they
+#    are all serialized into the text output), so per the field-sensitivity
+#    guidance we use one field-insensitive flow from !arg 1 rather than
+#    enumerating each field of the *dto.MetricFamily struct separately.
+#  - `out` is only ever written to, never read from, so there is no flow from
+#    !arg 0 to any return value or to !arg 1.
+
+dataflow-summaries:
+  - package: "github.com/prometheus/common/expfmt"
+    function: "MetricFamilyToText"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 1"

@@ -1,0 +1,160 @@
+{
+  "functions-000-net_http.conn.serve": {
+    "error": "timeout",
+    "message": "exceeded 1800 second timeout",
+    "timeout_seconds": 1800,
+    "log_file": "/usr/src/app/experiment/runs/test-experiment/results/prometheus/run-constructive-results.functions-000-net_http.conn.serve.log"
+  },
+  "middleware": [
+    {
+      "Func": "net/http.Handle",
+      "SummaryName": "net/http.Handle",
+      "Want": {},
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 10597365327
+    },
+    {
+      "Func": "net/http.HandleFunc",
+      "SummaryName": "net/http.HandleFunc",
+      "Want": {},
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 10833586253
+    },
+    {
+      "Func": "net/http.ListenAndServe",
+      "SummaryName": "net/http.ListenAndServe",
+      "Want": {
+        "!arg 0": [
+          "!ret 0"
+        ]
+      },
+      "Got": {
+        "!arg <addr 0>": [
+          "(!ret 0).Err.Addr"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/waitgroup.go",
+              "Offset": 2478,
+              "Line": 81,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/waitgroup.go",
+              "Offset": 3745,
+              "Line": 115,
+              "Column": 27
+            }
+          ]
+        },
+        "DataflowFeatures": {
+          "GoUsages": [
+            {
+              "Filename": "/usr/local/go/src/internal/singleflight/singleflight.go",
+              "Offset": 2241,
+              "Line": 86,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/singleflight/singleflight.go",
+              "Offset": 2241,
+              "Line": 86,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/singleflight/singleflight.go",
+              "Offset": 2241,
+              "Line": 86,
+              "Column": 2
+            },
+            {
+              "Filename": "/usr/local/go/src/net/lookup.go",
+              "Offset": 11965,
+              "Line": 354,
+              "Column": 4
+            },
+            {
+              "Filename": "/usr/local/go/src/net/lookup.go",
+              "Offset": 12014,
+              "Line": 356,
+              "Column": 4
+            }
+          ]
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 3004293709
+    },
+    {
+      "Func": "net/http.StatusText",
+      "SummaryName": "net/http.StatusText",
+      "Want": {
+        "!arg 0": [
+          "!ret 0"
+        ]
+      },
+      "Got": {
+        "!arg <code 0>": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "naive",
+      "MethodCounts": {
+        "naive": 1
+      },
+      "Elapsed": 704905796
+    },
+    {
+      "Func": "net/http.Redirect",
+      "SummaryName": "net/http.Redirect",
+      "Want": {
+        "!arg 2": [
+          "!arg 0"
+        ],
+        "!arg 3": [
+          "!arg 0"
+        ],
+        "(!arg 1).URL.Path": [
+          "!arg 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/hash/crc32/crc32_amd64.go",
+              "Offset": 5122,
+              "Line": 153,
+              "Column": 38
+            }
+          ]
+        },
+        "DataflowFeatures": {
+          "TimedOut": true
+        }
+      },
+      "Method": "naive",
+      "Elapsed": 328526502404
+    }
+  ],
+  "functions-004-net_http.NotFound": {
+    "error": "process_exit",
+    "message": "process exited with status 2",
+    "returncode": 2,
+    "log_file": "/usr/src/app/experiment/runs/test-experiment/results/prometheus/run-constructive-results.functions-004-net_http.NotFound.log"
+  }
+}

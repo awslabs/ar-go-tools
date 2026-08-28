@@ -1,0 +1,19 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg <data 2>'
+    to: '!ret 0'
+  - from: '!arg <operation 0>'
+    to: '!ret 0'
+  - from: '!arg <params 1>'
+    to: '!ret 0'
+  - from: (!receiver).ClientInfo
+    to: '!ret 0'
+  - from: (!receiver).Config
+    to: '!ret 0'
+  - from: (!receiver).Handlers
+    to: '!ret 0'
+  - from: (!receiver).Retryer
+    to: '!ret 0'
+  method: NewRequest
+  package: github.com/aws/aws-sdk-go/aws/client
+  receiver: '*Client'

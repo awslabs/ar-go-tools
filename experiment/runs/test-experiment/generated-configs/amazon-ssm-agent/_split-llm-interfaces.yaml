@@ -1,0 +1,103 @@
+dataflow-summaries:
+- flows: []
+  interface: BasicT
+  method: Infof
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows: []
+  interface: BasicT
+  method: Tracef
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows: []
+  interface: BasicT
+  method: Debugf
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  interface: BasicT
+  method: Warnf
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  - from: '!arg 1'
+    to: '!ret 0'
+  interface: BasicT
+  method: Errorf
+  package: github.com/aws/amazon-ssm-agent/agent/log
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: Error
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: Code
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: OrigErr
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Error
+  method: Message
+  package: github.com/aws/aws-sdk-go/aws/awserr
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Validator
+  method: Validate
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: temporary
+  method: Temporary
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  - from: '!receiver'
+    to: '!ret 1'
+  interface: endpointARNGetter
+  method: getEndpointARN
+  package: github.com/aws/aws-sdk-go/service/s3
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: endpointARNGetter
+  method: hasEndpointARN
+  package: github.com/aws/aws-sdk-go/service/s3
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  interface: Retryer
+  method: RetryRules
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!arg 0'
+    to: '!ret 0'
+  interface: Retryer
+  method: ShouldRetry
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Retryer
+  method: MaxRetries
+  package: github.com/aws/aws-sdk-go/aws/request
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: RequestFailure
+  method: StatusCode
+  package: github.com/aws/aws-sdk-go/aws/awserr

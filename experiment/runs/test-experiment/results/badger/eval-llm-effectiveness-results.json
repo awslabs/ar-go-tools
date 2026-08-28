@@ -1,0 +1,34 @@
+{
+  "rq": "llm-effectiveness",
+  "repo": "badger",
+  "targets": [
+    {
+      "summary_name": "fmt.Append",
+      "kind": "function",
+      "results": [
+        {
+          "name": "fmt.Append",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "soundy",
+          "llm_flow_count": 2,
+          "constructive_flow_count": 1,
+          "excess_flow_count": 1
+        }
+      ]
+    },
+    {
+      "summary_name": "fmt.Sprintln",
+      "kind": "function",
+      "results": [
+        {
+          "name": "fmt.Sprintln",
+          "reachable_implementation_count": 1,
+          "checker_soundness": "soundy",
+          "llm_flow_count": 1,
+          "constructive_flow_count": 0,
+          "excess_flow_count": 1
+        }
+      ]
+    }
+  ]
+}

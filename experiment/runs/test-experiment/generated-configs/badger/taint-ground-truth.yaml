@@ -1,0 +1,37 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  field-sensitive-funcs:
+  - .*
+  summarize-on-demand: true
+  taint-tracking:
+  - description: Checking that user-supplied paths to not flow directly to file operation
+      without sanitization
+    sinks:
+    - method: (Open|Create)
+      package: os
+    - method: Open
+      package: badger
+    - method: Join
+      package: filepath
+    sources:
+    - global: sstDir
+      kind: load
+      package: .*
+    tag: path-traversal-vuln-#1
+    targets:
+    - badger-cli
+    unsafe-skip-bound-labels: true
+  user-specs:
+  - ../../../experiment/ground-truth-summaries/badger/functions.yaml
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/badger
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./badger/
+  name: badger-cli

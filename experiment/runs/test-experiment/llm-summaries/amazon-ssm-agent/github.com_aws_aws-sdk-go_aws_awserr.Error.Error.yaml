@@ -1,0 +1,20 @@
+# awserr.Error is an interface embedding the standard `error` interface plus
+# Code(), Message(), and OrigErr() methods. The Error() method (satisfying the
+# generic error interface) returns a string built from the error's own code,
+# message, and possibly the wrapped original error's message. Concrete
+# implementations (e.g. awsError in awserr/error.go) format Error() using
+# their own Code, Message, and OrigErr fields, i.e., entirely from receiver
+# state, with no other inputs. There are no arguments to this method, so the
+# only meaningful flow is from the receiver to the returned string.
+#
+# Per the interface-method rules, this summary is field-insensitive: we use
+# !receiver directly rather than field paths, since it must be valid across
+# all implementations of the Error interface.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/awserr"
+    interface: "Error"
+    method: "Error"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

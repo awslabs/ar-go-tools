@@ -1,0 +1,47 @@
+# Analysis of github.com/aws/aws-sdk-go/private/protocol/rest.Unmarshal
+#
+# Source:
+#   func Unmarshal(r *request.Request) {
+#       if r.DataFilled() {
+#           v := reflect.Indirect(reflect.ValueOf(r.Data))
+#           if err := unmarshalBody(r, v); err != nil {
+#               r.Error = err
+#           }
+#       }
+#   }
+#
+# Unmarshal itself only calls r.DataFilled() (a pure predicate on r.Data, no
+# flow) and unmarshalBody(r, v), where v aliases r.Data via reflection.
+#
+# unmarshalBody(r *request.Request, v reflect.Value) error:
+#   Looks for a struct field tagged `payload:"..."` on v (i.e. on the type of
+#   r.Data) and, depending on the concrete Go type of that payload field,
+#   fills it in from r.HTTPResponse.Body:
+#     - []byte:          reads all bytes from r.HTTPResponse.Body, sets payload to the bytes
+#     - *string:         reads all bytes from r.HTTPResponse.Body, sets payload to the string
+#     - io.ReadCloser:   sets payload directly to r.HTTPResponse.Body (aliases the reader)
+#     - io.ReadSeeker:   reads all bytes from r.HTTPResponse.Body, wraps them and sets payload
+#     - default:         drains/closes the body and returns a serialization error
+#                          (no data-dependent content in the error, just a type name)
+#
+#   In every "success" case, bytes originating from r.HTTPResponse.Body end up
+#   stored into a field of r.Data (the target struct pointed to by the
+#   interface{} r.Data). Since r.Data is an interface{} value, per the
+#   interface field-sensitivity rule we treat it as a single field-insensitive
+#   sink (no path beyond ".Data"). r.HTTPResponse.Body is itself an
+#   io.ReadCloser (interface-typed field of the *http.Response struct), so we
+#   stop there too: "(!arg 0).HTTPResponse.Body".
+#
+#   On read errors, r.Error is set, but the error content is a generic I/O
+#   failure / serialization message (mentions the payload's Go type, not its
+#   contents) - it does not carry data derived from the body's bytes, so no
+#   flow into (!arg 0).Error is included.
+#
+# Net summary: (!arg 0).HTTPResponse.Body -> (!arg 0).Data
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/private/protocol/rest"
+    function: "Unmarshal"
+    flows:
+      - from: "(!arg 0).HTTPResponse.Body"
+        to: "(!arg 0).Data"

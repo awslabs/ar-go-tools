@@ -1,0 +1,41 @@
+# io/ioutil.ReadFile is a thin deprecated wrapper that simply calls
+# os.ReadFile(filename). Its behavior (per go doc -src):
+#
+#   func ReadFile(filename string) ([]byte, error) {
+#       return os.ReadFile(filename)
+#   }
+#
+# os.ReadFile itself:
+#   func ReadFile(name string) ([]byte, error) {
+#       f, err := Open(name)
+#       if err != nil {
+#           return nil, err
+#       }
+#       defer f.Close()
+#       return readFileContents(statOrZero(f), f.Read)
+#   }
+#
+# Flows identified:
+# 1. !arg 0 (filename) -> !ret 1 (error): if Open fails, the returned *PathError
+#    embeds the filename string directly in the error value, so the filename
+#    argument's data flows into the error return.
+# 2. !arg 0 (filename) -> !ret 0 (content bytes): the filename argument controls
+#    which file on the filesystem is opened and read, so an attacker-controlled
+#    filename determines exactly which file's contents are returned (e.g. a
+#    path-traversal-style flow from filename to leaked file content). This is
+#    a control-dependency that determines the returned data's origin/selection,
+#    which is the standard/soundness-preferring way to model file-read sources
+#    keyed by a caller-supplied path argument.
+#
+# No other inputs exist (single string argument), and there's no receiver.
+# The actual byte content is not further transformed, so a coarse whole-value
+# flow to !ret 0 is used (field/byte-slice element sensitivity is not tracked).
+
+dataflow-summaries:
+  - package: "io/ioutil"
+    function: "ReadFile"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"

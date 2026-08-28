@@ -1,0 +1,55 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  field-sensitive-funcs:
+  - .*
+  summarize-on-demand: true
+  taint-tracking:
+  - description: HTTP request data flowing into Prometheus metric labels
+    severity: HIGH
+    sinks:
+    - method: ^(Labels|CounterVec|HistogramVec|SummaryVec).*
+      package: github.com/prometheus/client_golang/prometheus
+    - method: ^New.*Vec$
+      package: github.com/prometheus/client_golang/prometheus/promauto
+    sources:
+    - method: WrapHandler
+      package: github.com/prometheus/client_golang/examples/middleware/httpmiddleware
+    tag: http-data-to-metric-labels
+    targets:
+    - middleware
+  - description: User-controlled request sizes affecting metrics
+    severity: MEDIUM
+    sinks:
+    - method: InstrumentHandlerRequestSize
+      package: github.com/prometheus/client_golang/prometheus/promhttp
+    sources:
+    - method: ^Body
+      package: net/http
+    - method: ContentLength
+      package: net/http
+    tag: request-size-manipulation
+    targets:
+    - middleware
+  - description: Unbounded handler names creating metric label explosion
+    severity: HIGH
+    sinks:
+    - method: WrapRegistererWith
+      package: github.com/prometheus/client_golang/prometheus
+    sources:
+    - method: WrapHandler
+      package: github.com/prometheus/client_golang/examples/middleware/httpmiddleware
+    tag: label-cardinality-bomb
+    targets:
+    - middleware
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/prometheus
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./examples/middleware/main.go
+  name: middleware

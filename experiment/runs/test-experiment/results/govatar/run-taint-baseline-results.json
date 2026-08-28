@@ -1,0 +1,381 @@
+{
+  "dataflows": [
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    },
+    {
+      "tag": "output-extension-to-encoder",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:59:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "path-traversal",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:103:27"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-injection",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:78:19"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/go/pkg/mod/github.com/urfave/cli/v2@v2.3.0/flag_string.go:80:22",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    },
+    {
+      "tag": "username-to-prng-seed",
+      "source": "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:55:25",
+      "sink": "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:121:32"
+    }
+  ],
+  "count_by_severity": {
+    "HIGH": 20,
+    "LOW": 44,
+    "MEDIUM": 10
+  },
+  "report_path": "/usr/src/app/payload/public-repos-checks/govatar/logs/argot/overall-report-1794356890.json",
+  "duration_seconds": 106.48
+}

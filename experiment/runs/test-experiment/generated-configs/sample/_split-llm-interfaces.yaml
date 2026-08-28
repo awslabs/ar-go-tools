@@ -1,0 +1,7 @@
+dataflow-summaries:
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: Stringer
+  method: String
+  package: fmt

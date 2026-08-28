@@ -1,0 +1,66 @@
+# Analysis of github.com/aws/aws-sdk-go/private/protocol/rest.Build
+#
+# func Build(r *request.Request) {
+#     if r.ParamsFilled() {
+#         v := reflect.ValueOf(r.Params).Elem()
+#         buildLocationElements(r, v, false)
+#         buildBody(r, v)
+#     }
+# }
+#
+# Build takes the single argument r (*request.Request) and, when r.Params is
+# non-nil, reflects over the fields of r.Params to populate parts of the
+# outgoing HTTP request stored in r.HTTPRequest, and possibly r.Body / r.Error.
+#
+# - buildLocationElements(r, v, false) walks the exported fields of the
+#   Params struct and, depending on each field's `location` tag, writes the
+#   (reflected) field value into:
+#     * r.HTTPRequest.Header  (buildHeader / buildHeaderMap)
+#     * r.HTTPRequest.URL     (buildURI: URL.Path/RawPath; buildQueryString:
+#       query string later encoded into URL.RawQuery)
+#   All of these ultimately reach r.HTTPRequest, so we summarize the flow as
+#   (!arg 0).Params -> (!arg 0).HTTPRequest (field-insensitive on HTTPRequest
+#   itself, since header/URL/body-adjacent writes all behave the same way:
+#   Params data ends up somewhere inside the *http.Request value).
+#   Also, on unsupported/invalid field types, convertType's default case
+#   builds an error with fmt.Errorf("unsupported value for param %v (%s)",
+#   v.Interface(), v.Type()) which embeds the actual field value; this error
+#   is wrapped and assigned to r.Error. Hence Params data can also flow into
+#   (!arg 0).Error.
+#
+# - buildBody(r, v) looks for a payload field (the "payload" tag on the
+#   struct's blank "_" field) and, if present, sets the request body via
+#   r.SetReaderBody / r.SetBufferBody / r.SetStringBody, all of which set
+#   r.Body directly and then call ResetBody(), which reads r.Body and copies
+#   it into r.HTTPRequest.Body. So Params data also flows into (!arg 0).Body
+#   (and transitively into (!arg 0).HTTPRequest via ResetBody, already
+#   covered by the HTTPRequest flow above).
+#   If SetReaderBody's Seek call fails, r.Error is set from a wrapped
+#   generic seek error (does not carry Params content) -- that specific path
+#   is not a Params->Error flow, but the convertType default-case flow above
+#   already covers Params->Error.
+#
+# - r.Config.DisableRestProtocolURICleaning only affects control flow
+#   (whether cleanPath is invoked); it does not contribute any data-flow
+#   from Config to an output, so it's excluded.
+#
+# Params is of static type interface{}; per interface field-insensitivity
+# rules we do not attempt to path further into its concrete fields -- we
+# treat (!arg 0).Params as a single opaque unit that is the source of the
+# flows below.
+#
+# r.HTTPRequest is a struct (*http.Request), but since every part reachable
+# through it (Header, URL, and eventually Body) receives Params data
+# identically, we use one field-insensitive flow into (!arg 0).HTTPRequest
+# rather than fragmenting by sub-field, per the field-sensitivity guidance.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/private/protocol/rest"
+    function: "Build"
+    flows:
+      - from: "(!arg 0).Params"
+        to: "(!arg 0).HTTPRequest"
+      - from: "(!arg 0).Params"
+        to: "(!arg 0).Body"
+      - from: "(!arg 0).Params"
+        to: "(!arg 0).Error"

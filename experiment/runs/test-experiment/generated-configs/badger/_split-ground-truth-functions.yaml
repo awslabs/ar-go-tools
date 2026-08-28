@@ -1,0 +1,13 @@
+dataflow-summaries:
+- flows:
+  - from: (!arg 0)[*]
+    to: (!ret 0)[*]
+  - from: (!arg 1)[*]
+    to: (!ret 0)[*]
+  function: Append
+  package: fmt
+- flows:
+  - from: (!arg 0)[*]
+    to: '!ret 0'
+  function: Sprintln
+  package: fmt

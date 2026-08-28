@@ -1,0 +1,45 @@
+
+# Analysis of github.com/aws/aws-sdk-go/aws/csm.metric.SetException:
+#
+#   func (m *metric) SetException(e metricException) {
+#       switch te := e.(type) {
+#       case awsException:
+#           m.AWSException = aws.String(te.exception)
+#           m.AWSExceptionMessage = aws.String(te.message)
+#       case sdkException:
+#           m.SDKException = aws.String(te.exception)
+#           m.SDKExceptionMessage = aws.String(te.message)
+#       }
+#   }
+#
+# `e` (arg 0) is typed as the interface `metricException` (methods Exception() string,
+# Message() string). Per the interface field-insensitivity rule, even though the
+# implementation does a type switch on concrete types (awsException, sdkException,
+# both wrapping a `requestException` with `exception`/`message` string fields), we must
+# not use field-sensitive access into the argument itself - it must be treated as a
+# single field-insensitive source: `!arg 0`.
+#
+# The receiver `m` (*metric) is a struct with many fields; only four of them are written
+# in this function: AWSException, AWSExceptionMessage, SDKException,
+# SDKExceptionMessage. Depending on the dynamic type of `e`, either the AWS* pair or the
+# SDK* pair gets set from data extracted out of `e` (via Exception()/Message()). Since we
+# can't statically determine which branch is taken, we soundly report that `!arg 0` flows
+# into each of the four fields it can possibly affect. No other fields of the receiver are
+# touched, so we deliberately keep this field-sensitive on the receiver side (to avoid
+# overtainting fields like ClientID, Latency, etc. that are never written here), while
+# keeping the source `!arg 0` field-insensitive (since it's an interface-typed argument).
+# There is no return value to consider (function returns nothing).
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/csm"
+    receiver: "metric"
+    method: "SetException"
+    flows:
+      - from: "!arg 0"
+        to: "(!receiver).AWSException"
+      - from: "!arg 0"
+        to: "(!receiver).AWSExceptionMessage"
+      - from: "!arg 0"
+        to: "(!receiver).SDKException"
+      - from: "!arg 0"
+        to: "(!receiver).SDKExceptionMessage"

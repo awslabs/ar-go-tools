@@ -1,0 +1,43 @@
+# text/template.Template.Execute(wr io.Writer, data any) error
+#
+# Execute(wr, data) just calls the internal t.execute(wr, data), which:
+#   - wraps data in a reflect.Value if it isn't already one
+#   - builds a state{tmpl: t, wr: wr, vars: [{"$", value}]}
+#   - walks the template tree (t.Root, from the receiver's parsed template)
+#     rendering text and field/method lookups from `data` (via `value`),
+#     writing the resulting text into `wr`
+#   - recovers panics into the returned error via errRecover
+#
+# Flows included:
+#   - !receiver -> !arg 0 (wr): the template's own literal text (parsed into
+#     t.Tree/t.Root from the receiver) is written to wr regardless of data.
+#   - !arg 1 (data) -> !arg 0 (wr): field/method values pulled from data are
+#     substituted into the rendered output written to wr. Since io.Writer is
+#     an interface, this flow is written field-insensitively for wr, and data
+#     is `any` (also field-insensitive since we can't know its concrete type).
+#   - !receiver -> !ret 0: parsing/execution errors (e.g., malformed template
+#     actions, invalid template state such as "incomplete or empty template")
+#     can embed information about the template itself in the returned error.
+#   - !arg 1 -> !ret 0: execution errors from evaluating template actions on
+#     data (e.g., "can't evaluate field X in type Y", nil pointer errors,
+#     custom error-returning methods invoked on data) can embed representations
+#     of data in the returned error message.
+#
+# wr is io.Writer (interface) and data is `any` (effectively interface-like,
+# untyped at compile time) so both are treated field-insensitively. The
+# receiver *Template is a concrete struct but its relevant flow is the whole
+# parsed template content flowing to output/error, not distinguishable by field.
+
+dataflow-summaries:
+  - package: "text/template"
+    receiver: "Template"
+    method: "Execute"
+    flows:
+      - from: "!receiver"
+        to: "!arg 0"
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

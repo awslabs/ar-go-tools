@@ -1,0 +1,53 @@
+# Analysis of net/http.NewRequestWithContext(ctx, method, url, body) (*Request, error)
+#
+# Signature: func NewRequestWithContext(ctx context.Context, method, url string, body io.Reader) (*Request, error)
+# As a method-less function, args are: !arg 0 = ctx, !arg 1 = method, !arg 2 = url, !arg 3 = body.
+# Returns: !ret 0 = *Request, !ret 1 = error.
+#
+# Flows identified from source:
+#
+# - ctx (!arg 0): stored verbatim into the unexported `ctx` field of the returned
+#   Request (accessible later via Request.Context()). Since `ctx` is an unexported
+#   field, we cannot express this via a field-sensitive access path from outside the
+#   package, so we record it as ctx -> whole returned *Request (!ret 0).
+#
+# - method (!arg 1): if non-empty, validated with validMethod and, if invalid, embedded
+#   into the error message via fmt.Errorf("net/http: invalid method %q", method), so it
+#   flows to !ret 1. If valid, it is stored directly into (!ret 0).Method.
+#
+# - url (!arg 2): parsed via url.Parse(url). The resulting *url.URL (with Host derived
+#   from it) is stored into (!ret 0).URL, and Host (post removeEmptyPort processing)
+#   into (!ret 0).Host. If parsing fails, the underlying *url.Error normally includes
+#   the original url string in its message, so url also flows to !ret 1.
+#
+# - body (!arg 3): wrapped (via io.NopCloser or used directly if already an
+#   io.ReadCloser) and stored into (!ret 0).Body. For *bytes.Buffer, *bytes.Reader, and
+#   *strings.Reader bodies, its length flows into (!ret 0).ContentLength, and a closure
+#   capturing a snapshot/copy of the body is stored into (!ret 0).GetBody (so body data
+#   flows there too, since GetBody returns a fresh reader over that data).
+#
+# No other flows: ProtoMajor/ProtoMinor/Proto/Header are constants/fresh maps, not
+# derived from any argument.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "NewRequestWithContext"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "(!ret 0).Method"
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "!arg 2"
+        to: "(!ret 0).URL"
+      - from: "!arg 2"
+        to: "(!ret 0).Host"
+      - from: "!arg 2"
+        to: "!ret 1"
+      - from: "!arg 3"
+        to: "(!ret 0).Body"
+      - from: "!arg 3"
+        to: "(!ret 0).GetBody"
+      - from: "!arg 3"
+        to: "(!ret 0).ContentLength"

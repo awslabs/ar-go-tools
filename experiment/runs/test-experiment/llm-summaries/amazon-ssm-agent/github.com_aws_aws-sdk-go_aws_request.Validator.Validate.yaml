@@ -1,0 +1,34 @@
+# github.com/aws/aws-sdk-go/aws/request.Validator is a generic interface:
+#
+#   type Validator interface {
+#       Validate() error
+#   }
+#
+# It has no arguments besides the receiver, and returns a single error value.
+# This interface is implemented pervasively throughout aws-sdk-go by generated
+# `*Input` structs (e.g. s3.PutObjectInput.Validate), whose Validate() methods
+# walk the receiver's fields, check required/length constraints, and build a
+# request.ErrInvalidParams error that is returned when validation fails.
+#
+# Inspecting representative generated implementations (e.g.
+# s3.PutObjectInput.Validate) shows that the returned error typically embeds
+# only hardcoded field *names* (e.g. "Bucket") via request.NewErrParamRequired
+# / NewErrParamMinLen, not the tainted field *values* themselves. However,
+# because Validate() is an interface method that must be summarized soundly
+# across every possible implementation (including hand-written ones not
+# following the generated pattern, and nested validation via AddNested calling
+# into nested structs' own Validate() implementations, whose error messages may
+# embed field values), we cannot assume all implementations avoid leaking
+# receiver data into the returned error.
+#
+# Per the field-insensitivity rule for interface method summaries, and
+# following the same pattern as the fmt.Stringer.String example (receiver ->
+# ret 0), the safe, sound summary is that the receiver as a whole may flow
+# into the returned error.
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    interface: "Validator"
+    method: "Validate"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

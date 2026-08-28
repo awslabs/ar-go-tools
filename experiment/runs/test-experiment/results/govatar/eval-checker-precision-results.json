@@ -1,0 +1,16 @@
+{
+  "rq": "checker-precision",
+  "repo": "govatar",
+  "targets": [
+    {
+      "summary_name": "(*text/tabwriter.Writer).Write",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*text/tabwriter.Writer).Write",
+          "checker_soundness": "unsound"
+        }
+      ]
+    }
+  ]
+}

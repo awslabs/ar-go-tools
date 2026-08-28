@@ -1,0 +1,29 @@
+# fmt.Append(b []byte, a ...any) []byte
+#
+# Behavior: formats the variadic arguments `a` using default formatting
+# (similar to fmt.Sprint) and appends the resulting bytes to the byte slice
+# `b`, returning the updated slice.
+#
+# Flows:
+# - !arg 0 (b) -> !ret 0: the original contents of b are part of the
+#   returned slice (it's appended to, not replaced), so taint on b flows to
+#   the return value.
+# - !arg 1 (a, the variadic operands) -> !ret 0: the formatted textual
+#   representation of each operand is appended into the returned byte slice,
+#   so taint on any operand flows to the return value. This covers arbitrary
+#   types including those implementing Stringer/error/Formatter, whose
+#   contents get rendered into the output bytes.
+#
+# No flows back into !arg 0 or !arg 1 themselves (append does not mutate the
+# arguments' backing semantics in a way visible to the caller's original
+# variables beyond the returned slice; b's backing array may be reused but
+# from a dataflow-summary perspective the relevant sink is the return value).
+
+dataflow-summaries:
+  - package: "fmt"
+    function: "Append"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

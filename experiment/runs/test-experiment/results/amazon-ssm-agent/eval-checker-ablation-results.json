@@ -1,0 +1,82 @@
+{
+  "rq": "checker-ablation",
+  "repo": "amazon-ssm-agent",
+  "targets": [
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+          "checker_method": "recursive"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetException",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetException",
+          "checker_method": "read"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+          "checker_method": "read"
+        }
+      ]
+    },
+    {
+      "summary_name": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(*net.DNSError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.timeoutError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.timeoutError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.OpError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.AddrError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*internal/poll.DeadlineExceededError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net.temporaryError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/url.Error).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*crypto/tls.permanentError).Temporary",
+          "checker_method": "general"
+        },
+        {
+          "name": "(*net/http.http2httpError).Temporary",
+          "checker_method": "general"
+        }
+      ]
+    }
+  ]
+}

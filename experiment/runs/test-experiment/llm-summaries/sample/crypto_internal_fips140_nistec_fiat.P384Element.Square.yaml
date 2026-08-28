@@ -1,0 +1,37 @@
+# Analysis of crypto/internal/fips140/nistec/fiat.(*P384Element).Square
+#
+# Source:
+#   func (e *P384Element) Square(t *P384Element) *P384Element {
+#       p384Square(&e.x, &t.x)
+#       return e
+#   }
+#
+# p384Square(out1, arg1) computes out1 = arg1 * arg1 (mod p) using
+# Montgomery-domain big-integer arithmetic (bits.Mul64/Add64/Sub64 and
+# conditional moves). It reads only from arg1 (derived from t.x) and writes
+# only to out1 (derived from e.x). There is no other data source (no globals
+# feeding into the numeric result; the modulus constants are fixed literals).
+#
+# Therefore:
+#   - !arg 0 (t) flows into the receiver's internal field x, since e.x is
+#     computed purely from t.x via p384Square. Since x is an unexported
+#     internal array field not otherwise distinguished, we treat the whole
+#     receiver as tainted by arg 0 (field-insensitive on the single relevant
+#     field x, using !receiver for simplicity, consistent with how other
+#     nistec Element methods are typically summarized).
+#   - The receiver is returned as !ret 0, so !arg 0 also flows to !ret 0.
+#   - The receiver's original value does not affect the output (Square
+#     overwrites e.x entirely with the new computed value), so there is no
+#     "!receiver -> !ret 0" self-flow of the *old* receiver value beyond the
+#     fact the same object is returned by identity. We only include the
+#     genuine data dependency: arg 0 -> receiver/ret.
+
+dataflow-summaries:
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "*P384Element"
+    method: "Square"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!ret 0"

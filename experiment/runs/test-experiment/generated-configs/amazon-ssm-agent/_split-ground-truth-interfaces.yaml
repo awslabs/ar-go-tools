@@ -1,0 +1,7 @@
+dataflow-summaries:
+- flows:
+  - from: '!receiver'
+    to: '!ret 0'
+  interface: temporary
+  method: Temporary
+  package: github.com/aws/aws-sdk-go/aws/request

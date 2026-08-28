@@ -1,0 +1,33 @@
+# fmt.Appendf(b []byte, format string, a ...any) []byte
+#
+# Behavior: formats according to `format` using the variadic args `a` (like
+# Sprintf), then appends the resulting bytes to `b` and returns the updated
+# slice.
+#
+# Flows identified:
+#   - !arg 0 (b)      -> !ret 0 : the input slice's existing contents are
+#                                 part of the returned (possibly reallocated)
+#                                 slice.
+#   - !arg 1 (format) -> !ret 0 : the format string's content directly
+#                                 determines bytes appended to the result
+#                                 (literal text of the format string ends up
+#                                 in the output).
+#   - !arg 2 (a...)   -> !ret 0 : each variadic argument's formatted
+#                                 representation is appended into the result.
+#
+# No other outputs exist (single return value, no receiver, no other
+# arguments), and there are no mutations of arguments themselves (b is not
+# modified in place beyond potentially being reallocated/copied into the
+# returned slice, which we model as a flow to !ret 0 only, consistent with
+# how append() is typically summarized).
+
+dataflow-summaries:
+  - package: "fmt"
+    function: "Appendf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 2"
+        to: "!ret 0"

@@ -1,0 +1,27 @@
+# github.com/aws/aws-sdk-go/aws/awserr.Error is an interface embedding the
+# standard `error` interface plus Code(), Message(), and OrigErr() methods.
+# OrigErr() is documented as: "Returns the original error if one was set.
+# Nil is returned if not set." This is a pure accessor/getter method on the
+# concrete types implementing the interface (e.g. baseError in this package,
+# and other wrapping error types across the codebase) - it simply returns
+# a value stored on the receiver (commonly a field like `origErr`) without
+# any transformation. There are no other arguments to consider.
+#
+# Since this is an interface method summary, per the task instructions it
+# must be field-insensitive: the flow is from the receiver as a whole to the
+# single return value.
+#
+# Attempted to load the target program via argot_load to inspect concrete
+# implementations (e.g. awserr.baseError, request.Error, etc.), but the
+# config failed to load due to an unrelated environment/filesystem issue
+# (failed to create a required logs directory). The interface contract is
+# unambiguous from its documentation/signature alone, so I proceeded with
+# that well-understood behavior instead of guessing further.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/awserr"
+    interface: "Error"
+    method: "OrigErr"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

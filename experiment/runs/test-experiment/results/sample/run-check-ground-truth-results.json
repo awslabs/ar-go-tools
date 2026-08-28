@@ -1,0 +1,1352 @@
+{
+  "sample-main:functions": [
+    {
+      "Func": "(*crypto/ecdsa.PrivateKey).Sign",
+      "SummaryName": "(*crypto/ecdsa.PrivateKey).Sign",
+      "Want": {
+        "!arg 0": [
+          "(!ret 0)[*]"
+        ],
+        "(!arg 1)[*]": [
+          "(!ret 0)[*]"
+        ],
+        "(!receiver).D": [
+          "(!ret 0)[*]"
+        ],
+        "(!receiver).PublicKey.Curve": [
+          "(!ret 0)[*]"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "!arg <digest 1> -> !ret 1",
+          "!arg <opts 2> -> !ret 0",
+          "!arg <opts 2> -> !ret 1",
+          "(!receiver).D -> !ret 1",
+          "(!receiver).PublicKey.Curve -> !ret 1",
+          "(!receiver).PublicKey.X -> !ret 0",
+          "(!receiver).PublicKey.X -> !ret 1",
+          "(!receiver).PublicKey.Y -> !ret 0",
+          "(!receiver).PublicKey.Y -> !ret 1",
+          "!arg <rand 0> -> !ret 1"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/syscall/unix/getrandom.go",
+              "Offset": 925,
+              "Line": 37,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/syscall/unix/getrandom.go",
+              "Offset": 908,
+              "Line": 37,
+              "Column": 25
+            }
+          ]
+        }
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "immutability": 42
+      },
+      "Elapsed": 4809206
+    },
+    {
+      "Func": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+      "SummaryName": "(*crypto/internal/fips140/nistec/fiat.P224Element).Square",
+      "Want": {
+        "(!arg 0).x": [
+          "(!receiver).x",
+          "(!ret 0).x"
+        ],
+        "(!receiver).x": [
+          "(!ret 0).x"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "(!receiver).x -> (!arg <t 0>).x"
+        ]
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "general": 2
+      },
+      "Elapsed": 1449754
+    },
+    {
+      "Func": "(*crypto/internal/fips140/nistec/fiat.P384Element).Square",
+      "SummaryName": "(*crypto/internal/fips140/nistec/fiat.P384Element).Square",
+      "Want": {
+        "(!arg 0).x": [
+          "(!receiver).x",
+          "(!ret 0).x"
+        ],
+        "(!receiver).x": [
+          "(!ret 0).x"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "(!receiver).x -> (!arg <t 0>).x"
+        ]
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "general": 2
+      },
+      "Elapsed": 1757224
+    },
+    {
+      "Func": "(*encoding/base64.Encoding).EncodeToString",
+      "SummaryName": "(*encoding/base64.Encoding).EncodeToString",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ],
+        "(!arg 0)[*]": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 2
+      },
+      "Elapsed": 29293
+    },
+    {
+      "Func": "crypto/cipher.NewGCM",
+      "SummaryName": "crypto/cipher.NewGCM",
+      "Want": {
+        "!arg 0": [
+          "!ret 0",
+          "!ret 1"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 2
+      },
+      "Elapsed": 24036
+    },
+    {
+      "Func": "crypto/elliptic.GenerateKey",
+      "SummaryName": "crypto/elliptic.GenerateKey",
+      "Want": {
+        "!arg 0": [
+          "!ret 1",
+          "!ret 2",
+          "!ret 3",
+          "(!ret 0)[*]"
+        ],
+        "!arg 1": [
+          "!ret 1",
+          "!ret 2",
+          "!ret 3",
+          "(!ret 0)[*]"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 2285,
+              "Line": 65,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 5878,
+              "Line": 190,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/cond.go",
+              "Offset": 3599,
+              "Line": 104,
+              "Column": 42
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/cond.go",
+              "Offset": 3727,
+              "Line": 106,
+              "Column": 40
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/cond.go",
+              "Offset": 3679,
+              "Line": 105,
+              "Column": 73
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "general": 6,
+        "immutability": 2
+      },
+      "Elapsed": 147623
+    },
+    {
+      "Func": "crypto/elliptic.MarshalCompressed",
+      "SummaryName": "crypto/elliptic.MarshalCompressed",
+      "Want": {
+        "!arg 0": [
+          "(!ret 0)[*]"
+        ],
+        "!arg 1": [
+          "(!ret 0)[*]"
+        ],
+        "!arg 2": [
+          "(!ret 0)[*]"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 8991,
+              "Line": 301,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 7377,
+              "Line": 242,
+              "Column": 46
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 6
+      },
+      "Elapsed": 67839
+    },
+    {
+      "Func": "encoding/hex.DecodeString",
+      "SummaryName": "encoding/hex.DecodeString",
+      "Want": {
+        "!arg 0": [
+          "!ret 1",
+          "(!ret 0)[*]"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 2
+      },
+      "Elapsed": 18309
+    },
+    {
+      "Func": "github.com/aws/aws-sdk-go/aws.String",
+      "SummaryName": "github.com/aws/aws-sdk-go/aws.String",
+      "Want": {
+        "!arg 0": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 9020
+    },
+    {
+      "Func": "io/ioutil.ReadFile",
+      "SummaryName": "io/ioutil.ReadFile",
+      "Want": {
+        "!arg 0": [
+          "!ret 1"
+        ]
+      },
+      "Soundness": "error",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "!arg <filename 0> -> !ret 0"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/syscall/unix/waitid_linux.go",
+              "Offset": 446,
+              "Line": 18,
+              "Column": 106
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/syscall/unix/waitid_linux.go",
+              "Offset": 495,
+              "Line": 18,
+              "Column": 155
+            }
+          ]
+        }
+      },
+      "Method": "recursive",
+      "Elapsed": 38577
+    }
+  ],
+  "sample-main:interfaces": [
+    {
+      "Func": "(*strings.Builder).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1613,
+              "Line": 47,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1596,
+              "Line": 47,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 17146
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.LogoutOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6007
+    },
+    {
+      "Func": "(*net/http.http2DataFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6295
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.UnauthorizedException).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5364
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.InvalidRequestException).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6329
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.GetSessionTokenOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5120
+    },
+    {
+      "Func": "(*os.ProcessState).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 12049
+    },
+    {
+      "Func": "(github.com/aws/aws-sdk-go/service/s3.outpostAccessPointEndpointBuilder).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 4954
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.GetFederationTokenOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6798
+    },
+    {
+      "Func": "(*net/http.http2WindowUpdateFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6796
+    },
+    {
+      "Func": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.OutpostAccessPointARN).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6214
+    },
+    {
+      "Func": "(*reflect.rtype).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/reflect/type.go",
+              "Offset": 18535,
+              "Line": 579,
+              "Column": 16
+            }
+          ],
+          "HigherOrderVals": [
+            {
+              "Path": "t.t.Equal",
+              "Type": "func(unsafe.Pointer, unsafe.Pointer) bool"
+            }
+          ]
+        }
+      },
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 8163
+    },
+    {
+      "Func": "(*bytes.Buffer).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 7520
+    },
+    {
+      "Func": "(*net/http.http2RSTStreamFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5771
+    },
+    {
+      "Func": "(*net/url.Userinfo).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 7674
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.GetRoleCredentialsOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6702
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 4857
+    },
+    {
+      "Func": "(*net/http.http2MetaHeadersFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 4968
+    },
+    {
+      "Func": "(*net/http.http2HeadersFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5277
+    },
+    {
+      "Func": "(*net/http.http2ContinuationFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 4290
+    },
+    {
+      "Func": "(*net.IPAddr).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 8448
+    },
+    {
+      "Func": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.S3ObjectLambdaAccessPointARN).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6046
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/s3.EndEvent).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6787
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/s3.RecordsEvent).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6121
+    },
+    {
+      "Func": "(*math/big.Int).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 2285,
+              "Line": 65,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 5878,
+              "Line": 190,
+              "Column": 30
+            }
+          ]
+        }
+      },
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 10848
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.TooManyRequestsException).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5565
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.ResourceNotFoundException).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6239
+    },
+    {
+      "Func": "(*net/http.http2SettingsFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5333
+    },
+    {
+      "Func": "(*net.UnixAddr).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 7893
+    },
+    {
+      "Func": "(*net/http.http2GoAwayFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6355
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/s3.ContinuationEvent).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 4725
+    },
+    {
+      "Func": "(*net/http.http2PushPromiseFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5098
+    },
+    {
+      "Func": "(*net/http.http2PingFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 4984
+    },
+    {
+      "Func": "(*net.UDPAddr).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 9946
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/aws/awserr.requestError).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5732
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithSAMLOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5831
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/internal/s3shared/s3err.RequestFailure).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5850
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountsOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6416
+    },
+    {
+      "Func": "(*net/url.URL).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1613,
+              "Line": 47,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1596,
+              "Line": 47,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1392,
+              "Line": 39,
+              "Column": 50
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/abi/escape.go",
+              "Offset": 696,
+              "Line": 21,
+              "Column": 23
+            }
+          ]
+        }
+      },
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 18113
+    },
+    {
+      "Func": "(*net/http.socksAddr).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 9421
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.AssumeRoleWithWebIdentityOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5498
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.GetAccessKeyInfoOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6151
+    },
+    {
+      "Func": "(*flag.stringValue).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5031
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.GetCallerIdentityOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6440
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/aws/awserr.baseError).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6088
+    },
+    {
+      "Func": "(*net.TCPAddr).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 9184
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/s3.ProgressEvent).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6272
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/s3.StatsEvent).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5842
+    },
+    {
+      "Func": "(*net/http.http2writeData).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 12247
+    },
+    {
+      "Func": "(*net/http.http2UnknownFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 7083
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sts.DecodeAuthorizationMessageOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6986
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/s3.PutObjectOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 8032
+    },
+    {
+      "Func": "(*github.com/aws/aws-sdk-go/service/sso.ListAccountRolesOutput).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 7467
+    },
+    {
+      "Func": "(*net/http.http2PriorityFrame).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6151
+    },
+    {
+      "Func": "(github.com/aws/aws-sdk-go/internal/s3shared/arn.AccessPointARN).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 6509
+    },
+    {
+      "Func": "(*net/http.pattern).String",
+      "SummaryName": "(fmt.Stringer).String",
+      "Want": {
+        "!receiver": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 5633
+    }
+  ]
+}

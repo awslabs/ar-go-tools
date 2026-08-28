@@ -1,0 +1,35 @@
+# Analysis of text/tabwriter.(*Writer).Flush
+#
+# Flush() simply calls the internal flush(), which (ignoring the panic-recovery
+# wrapper in handlePanic) calls flushNoDefers():
+#   - terminates/completes the current pending cell (metadata bookkeeping only,
+#     no new external data flow)
+#   - calls format(0, 0, len(b.lines)), which recursively computes column
+#     widths and ultimately calls writeLines to emit the buffered text
+#   - writeLines writes slices of b.buf (the buffered bytes previously
+#     supplied via Write calls) as well as padding/newline/vbar filler bytes
+#     to b.output via write0, which does b.output.Write(buf)
+#   - reset() then clears buf/lines/widths/etc. back to empty state
+#
+# So the only real dataflow is: the receiver's buffered content (b.buf, which
+# was populated by earlier Write calls storing caller-supplied data) is written
+# out to the receiver's underlying io.Writer, stored in the unexported field
+# `output`. Since `output` is an interface-typed field, per the field-sensitivity
+# rules for interfaces we stop at naming the field itself (no deeper path).
+#
+# The returned error is only non-nil on I/O failures (a panic captured by
+# handlePanic) and does not carry any data derived from the buffered content,
+# so there is no flow from the receiver to !ret 0.
+#
+# Other receiver fields (cell, lines, widths, pos, endChar) are just internal
+# bookkeeping/metadata (sizes, widths, counts) derived from the buffered bytes,
+# not independent data channels; they are reset to empty after Flush and do not
+# introduce additional meaningful flows beyond buf -> output.
+
+dataflow-summaries:
+  - package: "text/tabwriter"
+    receiver: "Writer"
+    method: "Flush"
+    flows:
+      - from: "(!receiver).buf"
+        to: "(!receiver).output"

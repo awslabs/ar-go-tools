@@ -1,0 +1,45 @@
+# net/http.NewRequest(method, url string, body io.Reader) (*Request, error)
+#
+# NewRequest is a thin wrapper: it just calls
+# NewRequestWithContext(context.Background(), method, url, body).
+#
+# Tracing NewRequestWithContext's body:
+#   - method: if empty, defaulted to "GET"; if invalid, an error is returned
+#     via fmt.Errorf("net/http: invalid method %q", method) - so method flows
+#     both into the constructed Request's Method field and into the returned
+#     error's message (arg 0 -> ret 0 Method field, arg 0 -> ret 1).
+#   - url: parsed via url.Parse(url). On parse failure, the returned error
+#     wraps information derived from the url string (arg 1 -> ret 1). On
+#     success, the parsed *url.URL is stored in Request.URL, and the derived
+#     Host (via removeEmptyPort(u.Host)) is stored in Request.Host - both
+#     derived from the url argument (arg 1 -> ret 0 URL/Host fields).
+#   - body: wrapped in io.NopCloser (unless already io.ReadCloser) and stored
+#     in Request.Body. For *bytes.Buffer / *bytes.Reader / *strings.Reader
+#     bodies, a GetBody closure is created that produces a fresh reader over
+#     the same underlying data - so body's content also flows into GetBody
+#     (arg 2 -> ret 0 Body/GetBody fields). Body content does not affect the
+#     error return.
+#
+# Request is a concrete struct (not accessed through an interface), and the
+# function returns *Request, so field-sensitive flows on !ret 0 are used to
+# precisely capture which input feeds which field, since Method/URL/Host
+# differ from Body/GetBody in their source.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "NewRequest"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0).Method"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!arg 1"
+        to: "(!ret 0).URL"
+      - from: "!arg 1"
+        to: "(!ret 0).Host"
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "!arg 2"
+        to: "(!ret 0).Body"
+      - from: "!arg 2"
+        to: "(!ret 0).GetBody"

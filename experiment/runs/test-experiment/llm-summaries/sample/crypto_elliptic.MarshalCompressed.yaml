@@ -1,0 +1,41 @@
+# crypto/elliptic.MarshalCompressed(curve Curve, x, y *big.Int) []byte
+#
+# Source:
+#   func MarshalCompressed(curve Curve, x, y *big.Int) []byte {
+#       panicIfNotOnCurve(curve, x, y)
+#       byteLen := (curve.Params().BitSize + 7) / 8
+#       compressed := make([]byte, 1+byteLen)
+#       compressed[0] = byte(y.Bit(0)) | 2
+#       x.FillBytes(compressed[1:])
+#       return compressed
+#   }
+#
+# Analysis:
+# - x (!arg 1): x.FillBytes(compressed[1:]) writes the big-endian bytes of x
+#   directly into the output buffer, so x's value flows fully into the
+#   returned []byte.
+# - y (!arg 2): only y.Bit(0) (the least-significant bit, indicating parity)
+#   is used, to set the low bit of compressed[0]. This is still a (partial)
+#   data flow from y into the returned bytes, so we include it - the
+#   analysis is not required to track sub-byte precision, and the returned
+#   slice is treated as a single unit anyway (per element-tracking
+#   limitations for slices).
+# - curve (!arg 0): curve.Params().BitSize determines the byte length of the
+#   output (byteLen), which affects the size/content layout of the returned
+#   slice. This is a genuine (if coarse, length-only) dataflow from curve to
+#   the return value, so it is included for soundness. curve is an
+#   interface (elliptic.Curve), so it is referenced field-insensitively.
+# - panicIfNotOnCurve is a validation check (may panic) and does not
+#   otherwise produce data flow into the return value beyond what's already
+#   captured.
+
+dataflow-summaries:
+  - package: "crypto/elliptic"
+    function: "MarshalCompressed"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 2"
+        to: "!ret 0"

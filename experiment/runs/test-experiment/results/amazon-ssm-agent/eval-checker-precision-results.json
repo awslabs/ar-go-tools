@@ -1,0 +1,82 @@
+{
+  "rq": "checker-precision",
+  "repo": "amazon-ssm-agent",
+  "targets": [
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+          "checker_soundness": "unsound"
+        }
+      ]
+    },
+    {
+      "summary_name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException",
+          "checker_soundness": "sound"
+        }
+      ]
+    },
+    {
+      "summary_name": "github.com/aws/aws-sdk-go/aws.mergeInConfig",
+      "kind": "function",
+      "results": [
+        {
+          "name": "github.com/aws/aws-sdk-go/aws.mergeInConfig",
+          "checker_soundness": "unsound"
+        }
+      ]
+    },
+    {
+      "summary_name": "(github.com/aws/aws-sdk-go/aws/request.temporary).Temporary",
+      "kind": "interface",
+      "results": [
+        {
+          "name": "(*net.temporaryError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*internal/poll.DeadlineExceededError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.http2httpError).Temporary",
+          "checker_soundness": "soundy"
+        },
+        {
+          "name": "(*net.DNSError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.OpError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/http.timeoutError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.AddrError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*crypto/tls.permanentError).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net/url.Error).Temporary",
+          "checker_soundness": "sound"
+        },
+        {
+          "name": "(*net.timeoutError).Temporary",
+          "checker_soundness": "sound"
+        }
+      ]
+    }
+  ]
+}

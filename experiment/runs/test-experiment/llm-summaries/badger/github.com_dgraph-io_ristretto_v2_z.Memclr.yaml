@@ -1,0 +1,46 @@
+# Analysis of github.com/dgraph-io/ristretto/v2/z.Memclr
+#
+# NOTE: Due to a persistent environment/infrastructure error (argot_reload_config
+# repeatedly failed with "could not create directory .../logs/argot"), the
+# program could not be loaded via argot_load/argot_reload_config, and go_doc also
+# could not resolve the module (GOPATH not configured for this module). This
+# summary is therefore based on well-established knowledge of the ristretto/v2/z
+# package implementation, which is small, stable, and well known.
+#
+# z.Memclr is implemented (in z/memclr.go / similar) roughly as:
+#
+#     //go:linkname memclrNoHeapPointers runtime.memclrNoHeapPointers
+#     //go:noescape
+#     func memclrNoHeapPointers(ptr unsafe.Pointer, n uintptr)
+#
+#     // Memclr clears the given byte slice using the runtime's fast memclr.
+#     func Memclr(data []byte) {
+#         if len(data) == 0 {
+#             return
+#         }
+#         memclrNoHeapPointers(unsafe.Pointer(&data[0]), uintptr(len(data)))
+#     }
+#
+# This function overwrites every byte of the argument slice with the zero value
+# using a runtime primitive (runtime.memclrNoHeapPointers). The content written
+# into the slice is always the constant 0 -- it is not derived from any other
+# input, and the function has no return value.
+#
+# Consequences for dataflow:
+#  - There is no external source of data that flows into the argument's
+#    content: the write is a constant zero-fill, not derived from another
+    #    argument or any other value.
+#  - The slice is cleared (sanitized) rather than tainted: any pre-existing
+#    taint on the argument's contents is effectively erased, not propagated
+#    from anywhere else.
+#  - There is no return value and no other argument to relate it to.
+#
+# Therefore, no meaningful data flow exists to declare for this function: it is
+# not a propagator (it doesn't route data from one place to another) and not
+# a case where an output's value is determined by some other input's value.
+# The safe and precise summary is an empty flow set.
+
+dataflow-summaries:
+  - package: "github.com/dgraph-io/ristretto/v2/z"
+    function: "Memclr"
+    flows: []

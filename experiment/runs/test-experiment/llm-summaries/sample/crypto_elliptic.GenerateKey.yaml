@@ -1,0 +1,53 @@
+# crypto/elliptic.GenerateKey(curve Curve, rand io.Reader) (priv []byte, x, y *big.Int, err error)
+#
+# Source (crypto/elliptic):
+#   N := curve.Params().N
+#   bitSize := N.BitLen()
+#   byteLen := (bitSize + 7) / 8
+#   priv = make([]byte, byteLen)
+#   for x == nil {
+#       _, err = io.ReadFull(rand, priv)
+#       if err != nil { return }
+#       priv[0] &= mask[bitSize%8]
+#       priv[1] ^= 0x42
+#       if new(big.Int).SetBytes(priv).Cmp(N) >= 0 { continue }
+#       x, y = curve.ScalarBaseMult(priv)
+#   }
+#   return
+#
+# Reasoning:
+# - `rand` (arg 1, io.Reader) is read into `priv` via io.ReadFull, so its data
+#   directly determines the returned `priv` byte slice (!ret 0). It also flows
+#   to the returned error (!ret 3), since io.ReadFull's error becomes `err`.
+# - `curve` (arg 0, elliptic.Curve interface) determines the byte length of
+#   `priv` (via curve.Params().N bit length) and also masks the first byte of
+#   `priv` (priv[0] &= mask[bitSize%8]), so curve's parameters affect the
+#   final content of `priv` as well (!ret 0). Since Curve is an interface
+#   type, use a field-insensitive identifier (!arg 0).
+# - `x, y` (!ret 1, !ret 2) are computed by curve.ScalarBaseMult(priv), so both
+#   `curve` (!arg 0) and `priv` (which itself depends on `rand` and `curve`)
+#   flow into x and y. Transitively, `rand` (!arg 1) and `curve` (!arg 0) both
+#   flow to !ret 1 and !ret 2.
+# - `curve` does not affect the returned error; only the rand-read error path
+#   sets `err`, so curve -> !ret 3 is not included.
+# - No flow from curve/rand back into either argument (no mutation of caller
+#   memory outside the return values).
+
+dataflow-summaries:
+  - package: "crypto/elliptic"
+    function: "GenerateKey"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "!arg 0"
+        to: "!ret 2"
+      - from: "!arg 1"
+        to: "!ret 2"
+      - from: "!arg 1"
+        to: "!ret 3"

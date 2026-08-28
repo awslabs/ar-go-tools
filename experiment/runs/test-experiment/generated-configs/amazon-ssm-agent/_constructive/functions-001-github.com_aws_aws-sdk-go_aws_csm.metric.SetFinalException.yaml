@@ -1,0 +1,13 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: (!receiver).FinalAWSException
+  - from: '!arg 0'
+    to: (!receiver).FinalAWSExceptionMessage
+  - from: '!arg 0'
+    to: (!receiver).FinalSDKException
+  - from: '!arg 0'
+    to: (!receiver).FinalSDKExceptionMessage
+  method: SetFinalException
+  package: github.com/aws/aws-sdk-go/aws/csm
+  receiver: '*metric'

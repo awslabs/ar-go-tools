@@ -1,0 +1,39 @@
+{
+  "dataflows": [
+    {
+      "tag": "data-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/sample/main.go:80:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/sample/main.go:84:13"
+    },
+    {
+      "tag": "data-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/sample/main.go:205:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/sample/main.go:215:13"
+    },
+    {
+      "tag": "data-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/sample/main.go:205:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/sample/main.go:221:13"
+    },
+    {
+      "tag": "data-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/sample/main.go:205:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/sample/main.go:209:13"
+    },
+    {
+      "tag": "data-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/sample/main.go:205:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/sample/main.go:261:24"
+    },
+    {
+      "tag": "data-logging",
+      "source": "/usr/src/app/payload/public-repos-checks/sample/main.go:205:44",
+      "sink": "/usr/src/app/payload/public-repos-checks/sample/main.go:261:24"
+    }
+  ],
+  "count_by_severity": {
+    "": 6
+  },
+  "report_path": "/usr/src/app/payload/public-repos-checks/sample/logs/argot/overall-report-1387953296.json",
+  "duration_seconds": 16.35
+}

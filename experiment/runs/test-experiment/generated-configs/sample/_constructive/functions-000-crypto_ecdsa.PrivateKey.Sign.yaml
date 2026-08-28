@@ -1,0 +1,13 @@
+dataflow-summaries:
+- flows:
+  - from: (!receiver).D
+    to: (!ret 0)[*]
+  - from: (!receiver).PublicKey.Curve
+    to: (!ret 0)[*]
+  - from: '!arg 0'
+    to: (!ret 0)[*]
+  - from: (!arg 1)[*]
+    to: (!ret 0)[*]
+  method: Sign
+  package: crypto/ecdsa
+  receiver: '*PrivateKey'

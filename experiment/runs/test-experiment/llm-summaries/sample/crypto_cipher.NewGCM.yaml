@@ -1,0 +1,18 @@
+# crypto/cipher.NewGCM(cipher Block) (AEAD, error)
+#
+# NewGCM wraps the given Block cipher into a GCM AEAD (via internal newGCM).
+# The returned AEAD value internally stores/wraps the passed Block cipher
+# (and uses it for all subsequent Seal/Open operations), so the cipher
+# argument's data (e.g. key material) is captured by and reachable through
+# the returned AEAD value. Since AEAD is an interface, the flow is recorded
+# field-insensitively to the whole !ret 0 position.
+#
+# The error return does not depend on the input cipher's data (it's either
+# nil or a static FIPS-mode error), so no flow from !arg 0 to !ret 1 is
+# included.
+dataflow-summaries:
+  - package: "crypto/cipher"
+    function: "NewGCM"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

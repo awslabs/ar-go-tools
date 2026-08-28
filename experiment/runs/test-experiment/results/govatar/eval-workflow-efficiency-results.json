@@ -1,0 +1,30 @@
+{
+  "rq": "workflow-efficiency",
+  "repo": "govatar",
+  "summarization_seconds": 100.99,
+  "check_seconds": 0.5,
+  "taint_with_summaries_seconds": 105.73,
+  "taint_baseline_seconds": 106.48,
+  "constructive_seconds": 0.17,
+  "speedup_factor": 1.01,
+  "agentic_vs_constructive_speedup": 0.0,
+  "dataflows_match": false,
+  "extra_dataflows_with_summaries": [
+    [
+      "output-extension-to-encoder",
+      "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:111:20"
+    ],
+    [
+      "output-extension-to-encoder",
+      "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:113:19"
+    ],
+    [
+      "output-extension-to-encoder",
+      "/usr/src/app/payload/public-repos-checks/govatar/govatar/main.go:57:65",
+      "/usr/src/app/payload/public-repos-checks/govatar/govatar.go:115:19"
+    ]
+  ],
+  "missing_dataflows_with_summaries": []
+}

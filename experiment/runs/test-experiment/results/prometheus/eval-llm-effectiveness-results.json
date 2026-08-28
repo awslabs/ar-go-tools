@@ -1,0 +1,72 @@
+{
+  "rq": "llm-effectiveness",
+  "repo": "prometheus",
+  "targets": [
+    {
+      "summary_name": "(*net/http.conn).serve",
+      "kind": "function",
+      "results": []
+    },
+    {
+      "summary_name": "(*net/http.http2serverConn).serve",
+      "kind": "function",
+      "results": []
+    },
+    {
+      "summary_name": "net/http.Handle",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.Handle",
+          "checker_soundness": "soundy",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.HandleFunc",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.HandleFunc",
+          "checker_soundness": "soundy",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.ListenAndServe",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.ListenAndServe",
+          "checker_soundness": "unsound",
+          "checker_method": "read",
+          "ground_truth_flow_count": 1
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.NotFound",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.NotFound",
+          "checker_soundness": "soundy",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "net/http.StatusText",
+      "kind": "function",
+      "results": [
+        {
+          "name": "net/http.StatusText",
+          "checker_soundness": "sound",
+          "checker_method": "immutability"
+        }
+      ]
+    }
+  ]
+}

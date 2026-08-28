@@ -1,0 +1,9 @@
+{
+  "repo": "sample",
+  "duration_seconds": 134.68,
+  "summaries_path": "/usr/src/app/experiment/runs/test-experiment/llm-summaries/sample/summaries.yaml",
+  "missing": [
+    "github.com_aws_aws-sdk-go_private_protocol_rest.Build.yaml",
+    "crypto_internal_fips140_hmac.HMAC.Sum.yaml"
+  ]
+}

@@ -1,0 +1,39 @@
+# Analysis of (*metric).SetFinalException(e metricException):
+#
+#   func (m *metric) SetFinalException(e metricException) {
+#       switch te := e.(type) {
+#       case awsException:
+#           m.FinalAWSException = aws.String(te.exception)
+#           m.FinalAWSExceptionMessage = aws.String(te.message)
+#       case sdkException:
+#           m.FinalSDKException = aws.String(te.exception)
+#           m.FinalSDKExceptionMessage = aws.String(te.message)
+#       }
+#   }
+#
+# The parameter `e` has interface type `metricException` (methods Exception() string,
+# Message() string). Per the interface field-sensitivity rules, any argument of
+# interface type must be treated field-insensitively (`!arg 0`), even though the
+# implementation type-switches to concrete structs (awsException, sdkException) that
+# wrap a `requestException` struct with `exception`/`message` string fields. Both
+# branches copy data extracted from `e` into different fields of the receiver
+# (FinalAWSException/FinalAWSExceptionMessage vs FinalSDKException/FinalSDKExceptionMessage).
+# Since we cannot distinguish which branch is taken from the interface argument alone
+# (soundness requirement), we record a flow from !arg 0 to all four struct fields that
+# could receive data derived from it, depending on the runtime type of e.
+#
+# No return value (function returns nothing). Only the receiver's fields are mutated.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/csm"
+    receiver: "*metric"
+    method: "SetFinalException"
+    flows:
+      - from: "!arg 0"
+        to: "(!receiver).FinalAWSException"
+      - from: "!arg 0"
+        to: "(!receiver).FinalAWSExceptionMessage"
+      - from: "!arg 0"
+        to: "(!receiver).FinalSDKException"
+      - from: "!arg 0"
+        to: "(!receiver).FinalSDKExceptionMessage"

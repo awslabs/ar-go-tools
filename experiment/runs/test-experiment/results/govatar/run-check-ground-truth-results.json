@@ -1,0 +1,168 @@
+{
+  "govatar-cli:functions": [
+    {
+      "Func": "(*text/tabwriter.Writer).Write",
+      "SummaryName": "(*text/tabwriter.Writer).Write",
+      "Want": {
+        "(!arg 0)[*]": [
+          "!ret 0",
+          "(!receiver).buf"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "(!receiver).buf -> (!receiver).cell",
+          "(!receiver).buf -> (!receiver).endChar",
+          "(!receiver).buf -> (!receiver).lines",
+          "(!receiver).buf -> (!receiver).pos",
+          "(!receiver).buf -> (!receiver).widths",
+          "(!receiver).buf -> !ret 0",
+          "(!receiver).buf -> !ret 1",
+          "(!receiver).cell -> (!receiver).buf",
+          "(!receiver).cell -> (!receiver).endChar",
+          "(!receiver).cell -> (!receiver).lines",
+          "(!receiver).cell -> (!receiver).pos",
+          "(!receiver).cell -> (!receiver).widths",
+          "(!receiver).cell -> !ret 0",
+          "(!receiver).cell -> !ret 1",
+          "(!receiver).endChar -> (!receiver).buf",
+          "(!receiver).endChar -> (!receiver).cell",
+          "(!receiver).endChar -> (!receiver).lines",
+          "(!receiver).endChar -> (!receiver).pos",
+          "(!receiver).endChar -> (!receiver).widths",
+          "(!receiver).endChar -> !ret 0",
+          "(!receiver).endChar -> !ret 1",
+          "(!receiver).flags -> (!receiver).buf",
+          "(!receiver).flags -> (!receiver).cell",
+          "(!receiver).flags -> (!receiver).endChar",
+          "(!receiver).flags -> (!receiver).lines",
+          "(!receiver).flags -> (!receiver).pos",
+          "(!receiver).flags -> (!receiver).widths",
+          "(!receiver).flags -> !ret 0",
+          "(!receiver).flags -> !ret 1",
+          "(!receiver).lines -> (!receiver).buf",
+          "(!receiver).lines -> (!receiver).cell",
+          "(!receiver).lines -> (!receiver).endChar",
+          "(!receiver).lines -> (!receiver).pos",
+          "(!receiver).lines -> (!receiver).widths",
+          "(!receiver).lines -> !ret 0",
+          "(!receiver).lines -> !ret 1",
+          "(!receiver).minwidth -> (!receiver).buf",
+          "(!receiver).minwidth -> (!receiver).cell",
+          "(!receiver).minwidth -> (!receiver).endChar",
+          "(!receiver).minwidth -> (!receiver).lines",
+          "(!receiver).minwidth -> (!receiver).pos",
+          "(!receiver).minwidth -> (!receiver).widths",
+          "(!receiver).minwidth -> !ret 0",
+          "(!receiver).minwidth -> !ret 1",
+          "(!receiver).output -> (!receiver).buf",
+          "(!receiver).output -> (!receiver).cell",
+          "(!receiver).output -> (!receiver).endChar",
+          "(!receiver).output -> (!receiver).lines",
+          "(!receiver).output -> (!receiver).pos",
+          "(!receiver).output -> (!receiver).widths",
+          "(!receiver).output -> !ret 0",
+          "(!receiver).output -> !ret 1",
+          "(!receiver).padbytes -> (!receiver).buf",
+          "(!receiver).padbytes -> (!receiver).cell",
+          "(!receiver).padbytes -> (!receiver).endChar",
+          "(!receiver).padbytes -> (!receiver).lines",
+          "(!receiver).padbytes -> (!receiver).pos",
+          "(!receiver).padbytes -> (!receiver).widths",
+          "(!receiver).padbytes -> !ret 0",
+          "(!receiver).padbytes -> !ret 1",
+          "(!receiver).padding -> (!receiver).buf",
+          "(!receiver).padding -> (!receiver).cell",
+          "(!receiver).padding -> (!receiver).endChar",
+          "(!receiver).padding -> (!receiver).lines",
+          "(!receiver).padding -> (!receiver).pos",
+          "(!receiver).padding -> (!receiver).widths",
+          "(!receiver).padding -> !ret 0",
+          "(!receiver).padding -> !ret 1",
+          "(!receiver).pos -> (!receiver).buf",
+          "(!receiver).pos -> (!receiver).cell",
+          "(!receiver).pos -> (!receiver).endChar",
+          "(!receiver).pos -> (!receiver).lines",
+          "(!receiver).pos -> (!receiver).widths",
+          "(!receiver).pos -> !ret 0",
+          "(!receiver).pos -> !ret 1",
+          "(!receiver).tabwidth -> (!receiver).buf",
+          "(!receiver).tabwidth -> (!receiver).cell",
+          "(!receiver).tabwidth -> (!receiver).endChar",
+          "(!receiver).tabwidth -> (!receiver).lines",
+          "(!receiver).tabwidth -> (!receiver).pos",
+          "(!receiver).tabwidth -> (!receiver).widths",
+          "(!receiver).tabwidth -> !ret 0",
+          "(!receiver).tabwidth -> !ret 1",
+          "(!receiver).widths -> (!receiver).buf",
+          "(!receiver).widths -> (!receiver).cell",
+          "(!receiver).widths -> (!receiver).endChar",
+          "(!receiver).widths -> (!receiver).lines",
+          "(!receiver).widths -> (!receiver).pos",
+          "(!receiver).widths -> !ret 0",
+          "(!receiver).widths -> !ret 1",
+          "!arg <buf 0> -> (!receiver).cell",
+          "!arg <buf 0> -> (!receiver).endChar",
+          "!arg <buf 0> -> (!receiver).lines",
+          "!arg <buf 0> -> (!receiver).pos",
+          "!arg <buf 0> -> (!receiver).widths",
+          "!arg <buf 0> -> !ret 1"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            },
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 11595,
+              "Line": 391,
+              "Column": 22
+            }
+          ]
+        }
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "immutability": 84
+      },
+      "Elapsed": 1783409101
+    }
+  ]
+}

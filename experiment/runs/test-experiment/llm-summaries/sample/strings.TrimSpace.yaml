@@ -1,0 +1,18 @@
+# strings.TrimSpace(s string) string
+#
+# Behavior: Returns a slice (substring) of the input string s, with leading
+# and trailing whitespace (as defined by unicode.IsSpace) removed. The
+# implementation computes start/stop indices into s and returns s[start:stop]
+# (or delegates to TrimFunc/TrimRightFunc for non-ASCII cases, which likewise
+# return substrings of the original string, possibly re-sliced/rebuilt from
+# the original runes). In every case, the returned string's content is
+# entirely derived from the input string s.
+#
+# Flow: !arg 0 (s) -> !ret 0. No other parameters, receiver, or globals are
+# involved. String is not a struct, so no field sensitivity applies.
+dataflow-summaries:
+  - package: "strings"
+    function: "TrimSpace"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

@@ -1,0 +1,19 @@
+# net/http.StatusText(code int) string
+#
+# Analysis:
+#   StatusText is a pure lookup function implemented as a switch statement
+#   over the input `code`. Each case returns a fixed, hard-coded string
+#   literal (e.g. "OK", "Not Found", ...); the default case returns "".
+#   The input integer `code` is only used to *select* which constant string
+#   literal is returned - none of its bits/value are copied into the
+#   returned string itself. Therefore there is no data flow from the
+#   argument's content to the return value's content: the set of possible
+#   outputs is a small fixed set of literals independent of the actual
+#   taint carried by `code` (only control-flow depends on it, which this
+#   summary format does not capture).
+#
+# Conclusion: no flows to record from !arg 0 to !ret 0.
+dataflow-summaries:
+  - package: "net/http"
+    function: "StatusText"
+    flows: []

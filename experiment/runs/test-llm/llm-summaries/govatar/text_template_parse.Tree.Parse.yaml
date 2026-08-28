@@ -1,0 +1,50 @@
+# Dataflow summary for text/template/parse.(*Tree).Parse
+#
+# func (t *Tree) Parse(text, leftDelim, rightDelim string, treeSet map[string]*Tree,
+#                       funcs ...map[string]any) (tree *Tree, err error)
+#
+# Reasoning:
+# - Parse lexes `text` (arg 0) via lex(...) and then calls t.parse(), which walks the
+#   lexer's tokens (all derived from `text`) and builds the AST rooted at t.Root
+#   (a *ListNode). It also stores the raw string in t.text. Both t.Root and t.text
+#   are therefore tainted by `text`. Since the receiver *t* is the exact same object
+#   returned as `tree` (`return t, nil`), and no other field of the receiver behaves
+#   differently with respect to `text`, we summarize this field-insensitively as
+#   `!arg 0` -> `!receiver` (which implies the AST/derived text data reaches
+#   `!receiver`), and also directly `!arg 0` -> `!ret 0` since ret0 is the receiver.
+# - `!receiver` -> `!ret 0` because `Parse` literally returns `t` (the receiver).
+# - `t.add()` stores `t` itself into `t.treeSet[t.Name]`, and `t.treeSet` is the same
+#   map object passed in as `treeSet` (arg 3) via `startParse`. Also, while parsing
+#   `{{define}}` blocks inside `t.parse()`, new sub-trees (`newT`) are parsed from the
+#   same underlying `text` and are added to the same `treeSet` map via their own
+#   `add()` call. Maps are reference types, so this mutates the caller's map.
+#   Hence both `!receiver` and `!arg 0` (indirectly, through the defined sub-templates
+#   parsed out of `text`) flow into `!arg 3`.
+# - On a parse error, `recover` captures a panic raised by `errorf`, which formats an
+#   error message that can embed the current lookahead token's textual value
+#   (`t.token[0]`), itself derived from lexing `text`. So `!arg 0` can flow into
+#   `!ret 1` (the returned error). No other input (leftDelim, rightDelim, funcs)
+#   appears to be copied into the error text, the AST structure, or the treeSet map
+#   in a way we could confirm from source -- they only affect control flow of the
+#   parser (which delimiters are recognized, whether "break"/"continue" are treated
+#   as keywords, etc.), so they are excluded from this data-flow summary.
+# - `funcs` is only used to look up whether certain names are already defined
+#   (`hasFunction`), a control-flow only use; it does not appear in any output.
+
+dataflow-summaries:
+  - package: "text/template/parse"
+    receiver: "*Tree"
+    method: "Parse"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!arg 3"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!arg 3"

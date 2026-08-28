@@ -1,0 +1,8 @@
+{
+  "repo": "badger",
+  "duration_seconds": 509.36,
+  "summaries_path": "/usr/src/app/experiment/runs/test-experiment/llm-summaries/badger/summaries.yaml",
+  "missing": [
+    "github.com_dgraph-io_badger_v4_table.Table.initBiggestAndSmallest$1.yaml"
+  ]
+}

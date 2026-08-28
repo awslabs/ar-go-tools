@@ -1,0 +1,396 @@
+{
+  "middleware:functions": [
+    {
+      "Func": "(*net/http.conn).serve",
+      "SummaryName": "(*net/http.conn).serve",
+      "Want": {
+        "!arg 0": [
+          "!receiver"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/internal/abi/type.go",
+              "Offset": 5544,
+              "Line": 179,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/abi/type.go",
+              "Offset": 5845,
+              "Line": 185,
+              "Column": 40
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 2285,
+              "Line": 65,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 5878,
+              "Line": 190,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "HigherOrderVals": [
+            {
+              "Path": "c.server.TLSConfig.Time",
+              "Type": "func() time.Time"
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 1
+      },
+      "Elapsed": 122469
+    },
+    {
+      "Func": "net/http.Handle",
+      "SummaryName": "net/http.Handle",
+      "Want": {},
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 4598,
+              "Line": 146,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 4998,
+              "Line": 159,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 5044,
+              "Line": 160,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 6203,
+              "Line": 203,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 6241,
+              "Line": 204,
+              "Column": 30
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 1,
+        "types": 1
+      },
+      "Elapsed": 20991
+    },
+    {
+      "Func": "net/http.HandleFunc",
+      "SummaryName": "net/http.HandleFunc",
+      "Want": {},
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 4598,
+              "Line": 146,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 4998,
+              "Line": 159,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 5044,
+              "Line": 160,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 6203,
+              "Line": 203,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/rwmutex.go",
+              "Offset": 6241,
+              "Line": 204,
+              "Column": 30
+            }
+          ],
+          "HigherOrderVals": [
+            {
+              "Path": "handler",
+              "Type": "func(net/http.ResponseWriter, *net/http.Request)"
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 1,
+        "types": 1
+      },
+      "Elapsed": 45426
+    },
+    {
+      "Func": "net/http.ListenAndServe",
+      "SummaryName": "net/http.ListenAndServe",
+      "Want": {
+        "!arg 0": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "unsound",
+      "Unsoundness": {
+        "UnprovenMustNotFlows": [
+          "!arg <handler 1> -> !ret 0"
+        ],
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/sync/waitgroup.go",
+              "Offset": 2478,
+              "Line": 81,
+              "Column": 36
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/waitgroup.go",
+              "Offset": 3745,
+              "Line": 115,
+              "Column": 27
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 2285,
+              "Line": 65,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 5878,
+              "Line": 190,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/abi/type.go",
+              "Offset": 5544,
+              "Line": 179,
+              "Column": 44
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/abi/type.go",
+              "Offset": 5845,
+              "Line": 185,
+              "Column": 40
+            }
+          ]
+        }
+      },
+      "Method": "read",
+      "MethodCounts": {
+        "immutability": 1,
+        "types": 1
+      },
+      "Elapsed": 704536
+    },
+    {
+      "Func": "net/http.NotFound",
+      "SummaryName": "net/http.NotFound",
+      "Want": {},
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/internal/stringslite/strings.go",
+              "Offset": 2983,
+              "Line": 149,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 2285,
+              "Line": 65,
+              "Column": 31
+            },
+            {
+              "Filename": "/usr/local/go/src/internal/sync/mutex.go",
+              "Offset": 5878,
+              "Line": 190,
+              "Column": 30
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20453,
+              "Line": 759,
+              "Column": 32
+            }
+          ],
+          "HigherOrderVals": [
+            {
+              "Path": "r.GetBody",
+              "Type": "func() (io.ReadCloser, error)"
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 2
+      },
+      "Elapsed": 35160
+    },
+    {
+      "Func": "net/http.StatusText",
+      "SummaryName": "net/http.StatusText",
+      "Want": {
+        "!arg 0": [
+          "!ret 0"
+        ]
+      },
+      "Soundness": "sound",
+      "Method": "general",
+      "MethodCounts": {
+        "general": 1
+      },
+      "Elapsed": 140360
+    },
+    {
+      "Func": "net/http.Redirect",
+      "SummaryName": "net/http.Redirect",
+      "Want": {
+        "!arg 2": [
+          "!arg 0"
+        ],
+        "!arg 3": [
+          "!arg 0"
+        ],
+        "(!arg 1).URL.Path": [
+          "!arg 0"
+        ]
+      },
+      "Soundness": "soundy",
+      "Unsoundness": {
+        "CheckFeatures": {
+          "UnsafeUsages": [
+            {
+              "Filename": "/usr/local/go/src/internal/stringslite/strings.go",
+              "Offset": 2983,
+              "Line": 149,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1613,
+              "Line": 47,
+              "Column": 39
+            },
+            {
+              "Filename": "/usr/local/go/src/strings/builder.go",
+              "Offset": 1596,
+              "Line": 47,
+              "Column": 22
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3351,
+              "Line": 93,
+              "Column": 52
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3336,
+              "Line": 93,
+              "Column": 37
+            },
+            {
+              "Filename": "/usr/local/go/src/sync/pool.go",
+              "Offset": 3438,
+              "Line": 95,
+              "Column": 23
+            }
+          ],
+          "ReflectUsages": [
+            {
+              "Filename": "/usr/local/go/src/fmt/print.go",
+              "Offset": 20453,
+              "Line": 759,
+              "Column": 32
+            }
+          ],
+          "HigherOrderVals": [
+            {
+              "Path": "r.GetBody",
+              "Type": "func() (io.ReadCloser, error)"
+            }
+          ]
+        }
+      },
+      "Method": "immutability",
+      "MethodCounts": {
+        "immutability": 1403,
+        "types": 76
+      },
+      "Elapsed": 687005787
+    }
+  ]
+}

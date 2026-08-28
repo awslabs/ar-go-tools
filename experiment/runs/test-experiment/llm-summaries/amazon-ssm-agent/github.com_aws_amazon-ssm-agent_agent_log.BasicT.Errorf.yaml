@@ -1,0 +1,61 @@
+# Reasoning:
+#
+# github.com/aws/amazon-ssm-agent/agent/log.BasicT is an interface:
+#
+#   type BasicT interface {
+#       ...
+#       // Errorf formats message according to format specifier
+#       // and writes to log with level Error.
+#       Errorf(format string, params ...interface{}) error
+#       ...
+#   }
+#
+# This interface "matches seelog.LoggerInterface" per its doc comment, and
+# indeed seelog.LoggerInterface declares the identical signature:
+#   Errorf(format string, params ...interface{}) error
+#
+# Unlike Tracef/Infof/Debugf (which have no return value and are pure sink
+# operations with no observable data flow to a caller-visible value), Errorf
+# returns an error. Looking at the representative/standard implementation
+# pattern in the seelog package (package-level seelog.Errorf, which mirrors
+# what a LoggerInterface implementation does):
+#
+#   func Errorf(format string, params ...interface{}) error {
+#       ...
+#       message := newLogFormattedMessage(format, params)
+#       Current.errorWithCallDepth(staticFuncCallDepth, message)
+#       return errors.New(message.String())
+#   }
+#
+# The returned error's message text is built directly from `format` and
+# `params` (akin to fmt.Sprintf(format, params...)), then wrapped via
+# errors.New. So the returned error is derived from both the format string
+# and the variadic params, and this dependency is part of the documented
+# contract of Errorf (format message per the format specifier), not just an
+# implementation detail of one particular backend. Since this is an interface
+# method summary, it must hold across all reasonable implementations of
+# BasicT; given the explicit "formats message ... and writes to log" and the
+# fact that a non-nil error is returned, the most faithful sound-but-precise
+# summary is that both the format string and the params flow into the
+# returned error.
+#
+# There is no receiver mutation and no other argument to flow into (no
+# pointer/output arguments besides the variadic params), so the only flow is
+# from !arg 0 (format) and !arg 1 (params) to !ret 0 (the returned error).
+#
+# Note: attempts to load the actual program via argot_load/argot_reload_config
+# failed with an environment/infrastructure error (unable to create a reports
+# directory), consistent with prior summaries generated for sibling methods
+# (Infof, Tracef) in this same package/interface. This summary is therefore
+# based on `go doc` inspection of the interface contract and the
+# representative seelog implementation pattern.
+
+dataflow-summaries:
+  - package: "github.com/aws/amazon-ssm-agent/agent/log"
+    interface: "BasicT"
+    method: "Errorf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

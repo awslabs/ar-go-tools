@@ -1,0 +1,20 @@
+{
+  "rq": "workflow-efficiency",
+  "repo": "badger",
+  "summarization_seconds": 509.36,
+  "check_seconds": 60.3,
+  "taint_with_summaries_seconds": 792.89,
+  "taint_baseline_seconds": 801.06,
+  "constructive_seconds": 163.91,
+  "speedup_factor": 1.01,
+  "agentic_vs_constructive_speedup": 0.32,
+  "dataflows_match": false,
+  "extra_dataflows_with_summaries": [],
+  "missing_dataflows_with_summaries": [
+    [
+      "path-traversal-vuln-#1",
+      "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/read_bench.go:97:31",
+      "/usr/src/app/payload/public-repos-checks/badger/badger/cmd/read_bench.go:103:31"
+    ]
+  ]
+}

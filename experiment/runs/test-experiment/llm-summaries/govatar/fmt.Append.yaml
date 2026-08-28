@@ -1,0 +1,34 @@
+# fmt.Append(b []byte, a ...any) []byte
+#
+# Source:
+#   func Append(b []byte, a ...any) []byte {
+#       p := newPrinter()
+#       p.doPrint(a)
+#       b = append(b, p.buf...)
+#       p.free()
+#       return b
+#   }
+#
+# Analysis:
+# - `b` (!arg 0) is the initial byte slice; the function appends formatted
+#   output to it and returns the resulting slice. So !arg 0 flows to !ret 0
+#   (the original bytes are preserved as a prefix of the result).
+# - `a` (!arg 1, the variadic operands) are formatted via p.doPrint(a), which
+#   writes a textual representation of each operand into p.buf, which is then
+#   appended onto b and returned. So !arg 1 (each operand) flows to !ret 0.
+# - No other outputs (no error, single return value) and no mutation of `a`
+#   or `b`'s backing array is observable back through arguments themselves
+#   (append may or may not mutate b's underlying array, but since a new slice
+#   value is returned and assigned there's no separate output aliasing to
+#   track beyond !ret 0).
+#
+# No ambiguity: this is a small, well-understood stdlib function.
+
+dataflow-summaries:
+  - package: "fmt"
+    function: "Append"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

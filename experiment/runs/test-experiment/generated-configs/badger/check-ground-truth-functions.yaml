@@ -1,0 +1,17 @@
+dataflow-problems:
+  check-ignores-unsound: true
+  check-specs:
+  - ../../../experiment/ground-truth-summaries/badger/functions.yaml
+  summarize-on-demand: true
+options:
+  analysis-options:
+    max-alarms: 30
+    unsafe-max-depth: 15
+  log-level: 3
+  project-root: ../../../../../payload/public-repos-checks/badger
+  report-paths: true
+  reports-dir: logs/argot
+targets:
+- files:
+  - ./badger/
+  name: badger-cli

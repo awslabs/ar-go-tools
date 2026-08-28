@@ -1,0 +1,7 @@
+dataflow-summaries:
+- flows:
+  - from: '!arg 0'
+    to: '!receiver'
+  method: serve
+  package: net/http
+  receiver: '*conn'

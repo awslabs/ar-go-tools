@@ -1,0 +1,26 @@
+# Reasoning:
+#
+# func (authz *Authorization) String() string
+#
+# The method uses reflection (reflect.ValueOf(*authz)) to iterate over every
+# field of the Authorization struct (username, realm, nonce, uri, response,
+# algorithm, cnonce, opaque, qop, nc, userhash) and writes each field's value
+# (formatted according to its name/tag - quoted, hex, or bool-as-string) into
+# a bytes.Buffer, which is then converted to a string and returned.
+#
+# Every field of the receiver ends up embedded in the returned string in
+# exactly the same way (read -> formatted -> appended to buffer -> returned),
+# so this is not a case that benefits from field-sensitivity: a single
+# field-insensitive flow from the whole receiver to the return value
+# captures the behavior precisely without fragmenting into one line per
+# field (per guidance 3d).
+#
+# No other inputs (no arguments beside the receiver) and no other outputs
+# (single string return value) are involved.
+dataflow-summaries:
+  - package: "github.com/aws/amazon-ssm-agent/agent/plugins/downloadcontent/httpresource/handler/auth/digest"
+    receiver: "*Authorization"
+    method: "String"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

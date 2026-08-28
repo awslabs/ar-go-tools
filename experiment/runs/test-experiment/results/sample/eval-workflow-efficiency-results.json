@@ -1,0 +1,14 @@
+{
+  "rq": "workflow-efficiency",
+  "repo": "sample",
+  "summarization_seconds": 134.68,
+  "check_seconds": 0.02,
+  "taint_with_summaries_seconds": 16.35,
+  "taint_baseline_seconds": 16.36,
+  "constructive_seconds": 972.12,
+  "speedup_factor": 1.0,
+  "agentic_vs_constructive_speedup": 7.22,
+  "dataflows_match": true,
+  "extra_dataflows_with_summaries": [],
+  "missing_dataflows_with_summaries": []
+}

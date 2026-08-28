@@ -1,0 +1,38 @@
+# Interface method summary for request.Retryer.RetryRules(*Request) time.Duration.
+#
+# This method computes the retry delay to use before the next attempt of a
+# failed request. It is implemented by types such as
+# client.DefaultRetryer, whose RetryRules reads fields off the *Request
+# argument (e.g. r.RetryCount, and header values consulted via
+# r.IsErrorThrottle()/getRetryAfterDelay(r), which inspect r.HTTPResponse
+# headers such as Retry-After) to compute the returned time.Duration delay.
+# This means the argument (the Request, including its response/error state)
+# concretely influences the returned delay value, so there is a data flow
+# from !arg 0 to !ret 0.
+#
+# Since this is an interface method summary, it must be field-insensitive
+# (per the field-sensitivity rules for interfaces): we use "!arg 0" directly
+# rather than any field access path, even though concrete implementations
+# read specific fields such as RetryCount or the HTTP response headers.
+#
+# No flow to/from !receiver is included beyond the implicit configuration
+# a concrete Retryer might hold (e.g. NumMaxRetries, MinRetryDelay) because
+# such receiver state does not depend on any argument taint and is not an
+# output position under this method's contract (it only affects magnitude
+# of the delay, not a flow "from" the receiver's configuration into a
+# taint-tracked output beyond determining the returned duration, which is
+# already sound to model via the argument flow above; receiver values are
+# also not attacker controlled/taint sources in the typical sense, and
+# omitting receiver->ret keeps the summary precise rather than padded).
+#
+# There's no meaningful flow back into !arg 0 (the Request is not mutated
+# in a way that matters for this summary purpose - RetryRules only reads
+# it), so no !ret->!arg flow or !arg->!arg flow is included.
+
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    interface: "Retryer"
+    method: "RetryRules"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

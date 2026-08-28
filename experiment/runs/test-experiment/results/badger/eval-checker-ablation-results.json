@@ -1,0 +1,26 @@
+{
+  "rq": "checker-ablation",
+  "repo": "badger",
+  "targets": [
+    {
+      "summary_name": "fmt.Append",
+      "kind": "function",
+      "results": [
+        {
+          "name": "fmt.Append",
+          "checker_method": "immutability"
+        }
+      ]
+    },
+    {
+      "summary_name": "fmt.Sprintln",
+      "kind": "function",
+      "results": [
+        {
+          "name": "fmt.Sprintln",
+          "checker_method": "general"
+        }
+      ]
+    }
+  ]
+}

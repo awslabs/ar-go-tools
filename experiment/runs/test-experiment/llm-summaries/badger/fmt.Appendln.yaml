@@ -1,0 +1,31 @@
+# fmt.Appendln(b []byte, a ...any) []byte
+#
+# Source (stdlib):
+#   func Appendln(b []byte, a ...any) []byte {
+#       p := newPrinter()
+#       p.doPrintln(a)
+#       b = append(b, p.buf...)
+#       p.free()
+#       return b
+#   }
+#
+# Analysis:
+# - `b` (!arg 0) is the initial byte slice; the function appends formatted
+#   output to it and returns the resulting slice. So !arg 0 flows to !ret 0
+#   (its bytes are part of the returned slice).
+# - `a` (!arg 1, the variadic operands) are formatted via p.doPrintln(a) into
+#   p.buf, which is then appended to b and returned. So the content/values of
+#   the variadic arguments flow into !ret 0 as well (their formatted textual
+#   representation ends up in the output bytes).
+# - No other outputs (no error, single return value only).
+# - This mirrors the well-known behavior of fmt.Append/Appendf/Appendln: both
+#   the initial buffer and the formatted arguments contribute to the result.
+
+dataflow-summaries:
+  - package: "fmt"
+    function: "Appendln"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"

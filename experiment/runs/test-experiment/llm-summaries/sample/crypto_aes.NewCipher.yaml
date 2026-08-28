@@ -1,0 +1,23 @@
+# crypto/aes.NewCipher(key []byte) (cipher.Block, error)
+#
+# Analysis:
+# - NewCipher validates the key length (16/24/32 bytes) and then either uses
+#   boring.NewAESCipher(key) or aes.New(key) to build an AES cipher.Block
+#   implementation. In all cases the key argument is stored inside the
+#   returned cipher.Block implementation (e.g. as expanded round keys used by
+#   Encrypt/Decrypt), so the key data flows into the returned cipher.Block.
+#   cipher.Block is an interface, so per the interface field-insensitivity
+#   rule we use a plain !ret 0 with no field suffix.
+# - If the key length is invalid, NewCipher returns a KeySizeError(k), where
+#   k = len(key). This error value is derived directly from the key
+#   argument (its length), so the key argument also flows into the returned
+#   error value (!ret 1).
+# - There is no other output (no mutation of the input slice itself).
+dataflow-summaries:
+  - package: "crypto/aes"
+    function: "NewCipher"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"

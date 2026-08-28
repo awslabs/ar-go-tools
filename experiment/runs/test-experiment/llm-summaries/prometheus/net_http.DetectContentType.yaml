@@ -1,0 +1,35 @@
+# DetectContentType(data []byte) string
+#
+# Source (net/http):
+#   func DetectContentType(data []byte) string {
+#       if len(data) > sniffLen { data = data[:sniffLen] }
+#       ...
+#       for _, sig := range sniffSignatures {
+#           if ct := sig.match(data, firstNonWS); ct != "" { return ct }
+#       }
+#       return "application/octet-stream"
+#   }
+#
+# The function inspects the bytes of `data` (via a table of signature matchers)
+# and returns a MIME type string derived from that content. The returned value
+# is either one of a small set of constant MIME-type strings, chosen based on
+# the actual bytes of `data`, or a constant fallback. There is no other input
+# argument. Although each individual returned string is a constant (not built
+# by concatenating pieces of `data`), which constant is returned depends
+# entirely on the content of `data`, so information about `data` (e.g. whether
+# it is attacker-controlled) is reflected in the choice of return value control-flow-wise.
+# To be sound with respect to a taint analysis that tracks whether the content of
+# `data` influences the returned value, we record a flow from the argument to the
+# return value.
+#
+# Could not load the target program config/binary in this environment (directory
+# creation error for reports dir), so this summary is based on direct inspection
+# of the net/http source via `go doc -src`, which is sufficient since
+# DetectContentType has no calls into project-specific code.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "DetectContentType"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

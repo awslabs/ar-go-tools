@@ -1,0 +1,24 @@
+{
+  "dataflows": [
+    {
+      "tag": "http-data-to-metric-labels",
+      "source": "/usr/src/app/payload/public-repos-checks/prometheus/examples/middleware/main.go:43:15",
+      "sink": "/usr/src/app/payload/public-repos-checks/prometheus/examples/middleware/httpmiddleware/httpmiddleware.go:50:55"
+    },
+    {
+      "tag": "label-cardinality-bomb",
+      "source": "/usr/src/app/payload/public-repos-checks/prometheus/examples/middleware/main.go:43:15",
+      "sink": "/usr/src/app/payload/public-repos-checks/prometheus/examples/middleware/httpmiddleware/httpmiddleware.go:42:38"
+    },
+    {
+      "tag": "label-cardinality-bomb",
+      "source": "/usr/src/app/payload/public-repos-checks/prometheus/examples/middleware/main.go:43:15",
+      "sink": "/usr/src/app/payload/public-repos-checks/prometheus/examples/middleware/httpmiddleware/httpmiddleware.go:42:38"
+    }
+  ],
+  "count_by_severity": {
+    "HIGH": 3
+  },
+  "report_path": "/usr/src/app/payload/public-repos-checks/prometheus/logs/argot/overall-report-3192916497.json",
+  "duration_seconds": 901.79
+}

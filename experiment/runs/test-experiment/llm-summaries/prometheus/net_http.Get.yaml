@@ -1,0 +1,28 @@
+# net/http.Get(url string) (resp *Response, err error)
+#
+# Get is a thin wrapper: `return DefaultClient.Get(url)`, which in turn calls
+# NewRequest(url) to build a *Request (parsing `url` into req.URL) and then
+# Client.Do(req). Do returns a *Response whose Request field is set to the
+# (possibly redirected-to) *Request that was actually sent; that Request's URL
+# field derives from the input url string. So the input `url` argument flows
+# into resp.Request.URL. No other fields of Response (Body, Header, StatusCode,
+# etc.) are determined by the input url - they come from the server's actual
+# response over the network - so we do not taint the whole *Response, only the
+# nested Request.URL field (access path length 2, within the max of 3).
+#
+# On error, http.Get/Client.Get returns errors of type *url.Error, whose URL
+# field is set from (a stringified form of) the requested URL, and whose
+# Error() string embeds the URL too. Since the return type is the `error`
+# interface, we treat this field-insensitively and record a flow from `!arg 0`
+# to `!ret 1`.
+#
+# No other inputs exist (single string argument), and there is no receiver.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "Get"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0).Request.URL"
+      - from: "!arg 0"
+        to: "!ret 1"

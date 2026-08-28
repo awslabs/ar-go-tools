@@ -1,0 +1,17 @@
+{
+  "rq": "checker-efficiency",
+  "repo": "govatar",
+  "targets": [
+    {
+      "summary_name": "(*text/template.Template).Funcs",
+      "kind": "function",
+      "results": [
+        {
+          "name": "(*text/template.Template).Funcs",
+          "checker_seconds": 0.001372921,
+          "constructive_seconds": 0.171392018
+        }
+      ]
+    }
+  ]
+}

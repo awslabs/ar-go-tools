@@ -1,0 +1,30 @@
+# net/http.FileServer(root FileSystem) Handler
+#
+# Source (from go doc -src):
+#   func FileServer(root FileSystem) Handler {
+#       return &fileHandler{root}
+#   }
+#
+# Analysis:
+# FileServer simply wraps the given FileSystem (root) into a fileHandler
+# struct (a single field holding root) and returns it as the Handler
+# interface. There is no other computation - the returned Handler's
+# behavior (its ServeHTTP method) is entirely driven by the root
+# FileSystem that was passed in, since it is stored directly as a field
+# of the returned struct.
+#
+# Because the return type (Handler) is an interface, per the field-
+# sensitivity rules for interfaces, we must use a field-insensitive flow
+# from !arg 0 to !ret 0 (we cannot reference the underlying fileHandler's
+# "root" field on the interface-typed return value).
+#
+# No other flows exist: FileServer takes only one argument and produces
+# only one return value, and the argument is directly captured into the
+# returned handler.
+
+dataflow-summaries:
+  - package: "net/http"
+    function: "FileServer"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

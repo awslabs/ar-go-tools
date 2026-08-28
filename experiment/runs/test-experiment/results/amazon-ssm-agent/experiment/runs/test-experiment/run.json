@@ -1,0 +1,23 @@
+{
+  "id": "test-experiment",
+  "status": "failed",
+  "started_at": "2026-08-14T02:54:23.905545+00:00",
+  "command": [
+    "run-check",
+    "--repo",
+    "amazon-ssm-agent",
+    "--variant",
+    "llm",
+    "--run-id",
+    "test-experiment"
+  ],
+  "tasks": {
+    "run-check:amazon-ssm-agent": {
+      "status": "failed",
+      "started_at": "2026-08-14T02:54:23.909106+00:00",
+      "finished_at": "2026-08-14T02:54:23.939359+00:00",
+      "error": "exit 1"
+    }
+  },
+  "finished_at": "2026-08-14T02:54:23.939556+00:00"
+}
