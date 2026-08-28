@@ -72,6 +72,14 @@ type IntraAnalysisState struct {
 
 	// postBlockCallback is called after each block if it is non-nil. Useful for debugging purposes.
 	postBlockCallback func(*IntraAnalysisState)
+
+	// reconstructPaths is set only after the forward fixpoint. It changes getMarks from a raw
+	// lattice query into bounded backward reconstruction and never affects changeFlag.
+	reconstructPaths    bool
+	eagerInputPaths     bool
+	reconstructionCache map[reconstructionQuery][]MarkWithAccessPath
+	instructionsByID    []ssa.Instruction
+	stores              []*ssa.Store
 }
 
 // initialize initializes the state of the analysis
@@ -96,25 +104,28 @@ func (state *IntraAnalysisState) initialize() {
 		state.freeVarAliases[id] = map[*ssa.FreeVar]bool{}
 	}
 
-	// The free variables of the function are marked
+	// The free variables of the function are marked.
 	for _, fv := range function.FreeVars {
-		// TODO change this to controlling the access path length
-		if fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[fv]]; fl > 0 {
-			for _, path := range AccessPathsOfType(fv.Type(), fl) {
-				state.flowInfo.AddMark(firstInstr, fv, path,
-					state.flowInfo.GetNewLabelledMark(fv, FreeVar, nil, NonIndexMark, path))
+		if state.eagerInputPaths {
+			if depth := state.flowInfo.fieldLength[state.flowInfo.ValueID[fv]]; depth > 0 {
+				for _, path := range AccessPathsOfType(fv.Type(), depth) {
+					state.flowInfo.AddMark(firstInstr, fv, path,
+						state.flowInfo.GetNewLabelledMark(fv, FreeVar, nil, NonIndexMark, path))
+				}
 			}
 		}
 		state.flowInfo.AddMark(firstInstr, fv, "",
 			state.flowInfo.GetNewMark(fv, FreeVar, nil, NonIndexMark))
 		state.addFreeVarAliases(fv)
 	}
-	// The parameters of the function are marked as Parameter
+	// The parameters of the function are marked as Parameter.
 	for _, param := range function.Params {
-		if fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[param]]; fl > 0 {
-			for _, path := range AccessPathsOfType(param.Type(), fl) {
-				state.flowInfo.AddMark(firstInstr, param, path,
-					state.flowInfo.GetNewLabelledMark(param, Parameter, nil, NonIndexMark, path))
+		if state.eagerInputPaths {
+			if depth := state.flowInfo.fieldLength[state.flowInfo.ValueID[param]]; depth > 0 {
+				for _, path := range AccessPathsOfType(param.Type(), depth) {
+					state.flowInfo.AddMark(firstInstr, param, path,
+						state.flowInfo.GetNewLabelledMark(param, Parameter, nil, NonIndexMark, path))
+				}
 			}
 		}
 		state.flowInfo.AddMark(firstInstr, param, "",
@@ -267,6 +278,14 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
 	ignorePath bool) []MarkWithAccessPath {
+	if state.reconstructPaths {
+		return state.reconstructMarks(i, v, path, ignorePath)
+	}
+	return state.rawMarks(i, v, path, ignorePath)
+}
+
+func (state *IntraAnalysisState) rawMarks(i ssa.Instruction, v ssa.Value, path string,
+	ignorePath bool) []MarkWithAccessPath {
 	var origins []MarkWithAccessPath
 
 	aliasPos, inFunc := state.flowInfo.GetPos(i, v)
@@ -361,17 +380,19 @@ func (state *IntraAnalysisState) callCommonMark(ctx context.Context, value ssa.V
 	}
 
 	args := lang.GetArgs(instr)
-	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
-		// Mark call argument
-		if fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[arg]]; fl > 0 {
-			for _, path := range AccessPathsOfType(arg.Type(), fl) {
-				newMark := state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path)
-				state.markValue(ctx, instr, arg, path, newMark)
+		if state.eagerInputPaths {
+			if depth := state.flowInfo.fieldLength[state.flowInfo.ValueID[arg]]; depth > 0 {
+				for _, path := range AccessPathsOfType(arg.Type(), depth) {
+					mark := state.flowInfo.GetNewLabelledMark(
+						instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path,
+					)
+					state.markValue(ctx, instr, arg, path, mark)
+				}
 			}
 		}
-		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark)
-		state.markValue(ctx, instr, arg, "", newMark)
+		mark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark)
+		state.markValue(ctx, instr, arg, "", mark)
 	}
 }
 
@@ -389,30 +410,28 @@ func (state *IntraAnalysisState) marksToAdd(
 		return trackingMarks
 	}
 	for i := 0; i < res.Len(); i++ {
-		fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[value]]
-		if value != nil && lang.CanType(value) && fl > 0 {
+		if state.eagerInputPaths && value != nil && lang.CanType(value) {
+			depth := state.flowInfo.fieldLength[state.flowInfo.ValueID[value]]
 			actualType := value.Type()
-			switch vt := value.Type().(type) {
-			case *types.Tuple:
-				if res.Len() > 1 && vt.Len() <= i {
+			if tuple, ok := value.Type().(*types.Tuple); ok {
+				if res.Len() > 1 && tuple.Len() <= i {
 					panic("unexpected malformed result type")
 				}
-				actualType = vt.At(i).Type()
+				actualType = tuple.At(i).Type()
 			}
-			for _, path := range AccessPathsOfType(actualType, fl) {
-				m := MarkWithAccessPath{
+			for _, path := range AccessPathsOfType(actualType, depth) {
+				trackingMarks = append(trackingMarks, MarkWithAccessPath{
 					Mark: state.flowInfo.GetNewLabelledMark(
-						instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
+						instr.(ssa.Node), CallReturn, nil, NewIndex(i), path,
+					),
 					AccessPath: path,
-				}
-				trackingMarks = append(trackingMarks, m)
+				})
 			}
 		}
-		m := MarkWithAccessPath{
+		trackingMarks = append(trackingMarks, MarkWithAccessPath{
 			Mark:       state.flowInfo.GetNewMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i)),
 			AccessPath: "",
-		}
-		trackingMarks = append(trackingMarks, m)
+		})
 	}
 
 	return trackingMarks

@@ -86,7 +86,7 @@ func IntraProceduralAnalysis(ctx context.Context, state *State,
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
 func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
-	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, false)
+	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, false, false)
 }
 
 // RunIntraProceduralFields runs the intra-procedural analysis tracking every value at an access path
@@ -95,20 +95,20 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 func RunIntraProceduralFields(
 	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int,
 ) (time.Duration, int, error) {
-	return runIntraProcedural(ctx, a, sm, maxPathLen, true)
+	return runIntraProcedural(ctx, a, sm, maxPathLen, true, true)
 }
 
 // RunIntraProceduralMaxFields runs the intra-procedural analysis at the deepest access path length any
 // analysis tracks, ignoring the config's field-sensitive-funcs. For callers that construct a summary
 // rather than check one, and so have no summary to take a precision from.
 func RunIntraProceduralMaxFields(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
-	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, true)
+	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, true, false)
 }
 
 // runIntraProcedural runs the intra-procedural analysis on sm, returning the elapsed time, the
 // number of distinct SSA values tracked, and an error if the analysis failed.
 func runIntraProcedural(
-	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int, explicitPathLen bool,
+	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int, explicitPathLen, eagerInputPaths bool,
 ) (time.Duration, int, error) {
 	if sm == nil {
 		return 0, 0, fmt.Errorf("summary graph is nil")
@@ -138,15 +138,23 @@ func runIntraProcedural(
 		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
 		shouldTrack:         sm.shouldTrack,
 		postBlockCallback:   sm.postBlockCallBack,
+		eagerInputPaths:     eagerInputPaths,
 	}
 
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()
+	if !eagerInputPaths {
+		state.indexReconstructionInstructions()
+	}
 	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
 	if err := lang.RunForwardIterative(ctx, state, sm.Parent); err != nil {
 		return time.Since(start), int(flowInfo.NumValues), err
+	}
+	state.reconstructPaths = !eagerInputPaths
+	if state.reconstructPaths {
+		state.reconstructionCache = make(map[reconstructionQuery][]MarkWithAccessPath)
 	}
 	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
 	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
@@ -297,23 +305,33 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			break
 		default:
 			// Check the state of the analysis at the final return to see which parameters or free variables might
-			// have been modified by the function
+			// have been modified by the function.
 			if lang.IsNillableType(val.Type()) {
-				for _, mark := range abstractValue.AllMarks() {
+				for _, mark := range state.getMarks(x, markedValue, "", true) {
 					markedValueID, ok := state.flowInfo.GetValueID(markedValue)
 					if !ok {
 						continue
 					}
 					for aliasedParam := range state.paramAliases[markedValueID] {
-						state.summary.addParamEdge(mark, nil, aliasedParam)
+						adjusted := mark
+						adjusted.AccessPath = state.aliasDestinationPath(
+							markedValue, aliasedParam, mark.AccessPath,
+						)
+						state.summary.addParamEdge(adjusted, nil, aliasedParam)
 					}
 					for aliasedFreeVar := range state.freeVarAliases[markedValueID] {
-						state.summary.addFreeVarEdge(mark, nil, aliasedFreeVar)
+						adjusted := mark
+						adjusted.AccessPath = state.aliasDestinationPath(
+							markedValue, aliasedFreeVar, mark.AccessPath,
+						)
+						state.summary.addFreeVarEdge(adjusted, nil, aliasedFreeVar)
 					}
 				}
 			}
 		}
 	}
+
+	state.materializeStoreOutputEdges(x)
 
 	for tupleIndex, result := range x.Results {
 		switch r := result.(type) {
